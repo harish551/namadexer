@@ -41,7 +41,8 @@ pub fn get_create_transactions_table_query(network: &str) -> String {
         gas_limit_multiplier BIGINT,
         code BYTEA,
         data BYTEA,
-        return_code INTEGER
+        return_code INTEGER,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     );",
         network
     )

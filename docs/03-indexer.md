@@ -7,6 +7,7 @@ The indexer is written in Rust and store blocks and transaction to a PostgreSQL 
 The indexer must have the following configuration:
 
 Settings.toml
+
 ```toml
 # Level of logging in the indexer
 log_level = "info"
@@ -38,9 +39,10 @@ $ INDEXER_CONFIG_PATH="${PWD}/config/Settings.toml" ./indexer
 ## Postgres tables
 
 The tables are automatically created by the indexer if they don't exist.
+
 ```sql
             List of relations
- Schema |     Name     | Type  |  Owner   
+ Schema |     Name     | Type  |  Owner
 --------+--------------+-------+----------
  public | blocks       | table | postgres
  public | evidences    | table | postgres
@@ -59,31 +61,31 @@ This table contains all the information found in a block and also the commit inf
 \d blocks
 
                                Table "public.blocks"
-                 Column                  |  Type   | Collation | Nullable | Default 
+                 Column                  |  Type   | Collation | Nullable | Default
 -----------------------------------------+---------+-----------+----------+---------
- block_id                                | bytea   |           | not null | 
- header_version_app                      | integer |           | not null | 
- header_version_block                    | integer |           | not null | 
- header_chain_id                         | text    |           | not null | 
- header_height                           | integer |           | not null | 
- header_time                             | text    |           | not null | 
- header_last_block_id_hash               | bytea   |           |          | 
- header_last_block_id_parts_header_total | integer |           |          | 
- header_last_block_id_parts_header_hash  | bytea   |           |          | 
- header_last_commit_hash                 | bytea   |           |          | 
- header_data_hash                        | bytea   |           |          | 
- header_validators_hash                  | bytea   |           | not null | 
- header_next_validators_hash             | bytea   |           | not null | 
- header_consensus_hash                   | bytea   |           | not null | 
- header_app_hash                         | text    |           | not null | 
- header_last_results_hash                | bytea   |           |          | 
- header_evidence_hash                    | bytea   |           |          | 
- header_proposer_address                 | text    |           | not null | 
- commit_height                           | integer |           |          | 
- commit_round                            | integer |           |          | 
- commit_block_id_hash                    | bytea   |           |          | 
- commit_block_id_parts_header_total      | integer |           |          | 
- commit_block_id_parts_header_hash       | bytea   |           |          | 
+ block_id                                | bytea   |           | not null |
+ header_version_app                      | integer |           | not null |
+ header_version_block                    | integer |           | not null |
+ header_chain_id                         | text    |           | not null |
+ header_height                           | integer |           | not null |
+ header_time                             | text    |           | not null |
+ header_last_block_id_hash               | bytea   |           |          |
+ header_last_block_id_parts_header_total | integer |           |          |
+ header_last_block_id_parts_header_hash  | bytea   |           |          |
+ header_last_commit_hash                 | bytea   |           |          |
+ header_data_hash                        | bytea   |           |          |
+ header_validators_hash                  | bytea   |           | not null |
+ header_next_validators_hash             | bytea   |           | not null |
+ header_consensus_hash                   | bytea   |           | not null |
+ header_app_hash                         | text    |           | not null |
+ header_last_results_hash                | bytea   |           |          |
+ header_evidence_hash                    | bytea   |           |          |
+ header_proposer_address                 | text    |           | not null |
+ commit_height                           | integer |           |          |
+ commit_round                            | integer |           |          |
+ commit_block_id_hash                    | bytea   |           |          |
+ commit_block_id_parts_header_total      | integer |           |          |
+ commit_block_id_parts_header_hash       | bytea   |           |          |
 Indexes:
     "pk_block_id" PRIMARY KEY, btree (block_id)
     "ux_header_height" UNIQUE, btree (header_height)
@@ -101,13 +103,13 @@ NOTE: it doesn't seem to be worth storing the encrypted data as no computation c
 \d transactions
 
             Table "public.transactions"
-  Column  | Type  | Collation | Nullable | Default 
+  Column  | Type  | Collation | Nullable | Default
 ----------+-------+-----------+----------+---------
- hash     | bytea |           | not null | 
- block_id | bytea |           | not null | 
- tx_type  | text  |           | not null | 
- code     | bytea |           |          | 
- data     | bytea |           |          | 
+ hash     | bytea |           | not null |
+ block_id | bytea |           | not null |
+ tx_type  | text  |           | not null |
+ code     | bytea |           |          |
+ data     | bytea |           |          |
 Indexes:
     "pk_hash" PRIMARY KEY, btree (hash)
 Foreign-key constraints:
@@ -123,14 +125,14 @@ The `evidences` table contains the evidences of validators misbehavior. Only one
 \d evidences
 
                    Table "public.evidences"
-       Column       |  Type   | Collation | Nullable | Default 
+       Column       |  Type   | Collation | Nullable | Default
 --------------------+---------+-----------+----------+---------
- block_id           | bytea   |           | not null | 
- height             | integer |           |          | 
- time               | text    |           |          | 
- address            | bytea   |           |          | 
- total_voting_power | integer |           | not null | 
- validator_power    | integer |           | not null | 
+ block_id           | bytea   |           | not null |
+ height             | integer |           |          |
+ time               | text    |           |          |
+ address            | bytea   |           |          |
+ total_voting_power | integer |           | not null |
+ validator_power    | integer |           | not null |
 ```
 
 ### Tx Transfer
@@ -141,15 +143,15 @@ The `tx_transfer` table contains all the transfer transaction decoded. It allows
 \d tx_transfer
 
             Table "public.tx_transfer"
-  Column  | Type  | Collation | Nullable | Default 
+  Column  | Type  | Collation | Nullable | Default
 ----------+-------+-----------+----------+---------
- tx_id    | bytea |           | not null | 
- source   | text  |           | not null | 
- target   | text  |           | not null | 
- token    | text  |           | not null | 
- amount   | text  |           | not null | 
- key      | text  |           |          | 
- shielded | bytea |           |          | 
+ tx_id    | bytea |           | not null |
+ source   | text  |           | not null |
+ target   | text  |           | not null |
+ token    | text  |           | not null |
+ amount   | text  |           | not null |
+ key      | text  |           |          |
+ shielded | bytea |           |          |
 Indexes:
     "pk_tx_id_transfer" PRIMARY KEY, btree (tx_id)
     "x_source_transfer" hash (source)
@@ -164,13 +166,13 @@ The `tx_bond` table contains the decoded informations for the bond transactions.
 \d tx_bond
 
                 Table "public.tx_bond"
-  Column   |  Type   | Collation | Nullable | Default 
+  Column   |  Type   | Collation | Nullable | Default
 -----------+---------+-----------+----------+---------
- tx_id     | bytea   |           | not null | 
- validator | text    |           | not null | 
- amount    | text    |           | not null | 
- source    | text    |           |          | 
- bond      | boolean |           | not null | 
+ tx_id     | bytea   |           | not null |
+ validator | text    |           | not null |
+ amount    | text    |           | not null |
+ source    | text    |           |          |
+ bond      | boolean |           | not null |
 Indexes:
     "pk_tx_id_bond" PRIMARY KEY, btree (tx_id)
     "x_source_bond" hash (source)
@@ -178,8 +180,6 @@ Indexes:
 
 ```
 
-
 ## Indexer logic
 
 ![Indexer graph](./assets/indexer_graph.jpg)
-

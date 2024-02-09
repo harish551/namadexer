@@ -1,9 +1,9 @@
 use crate::error::Error;
-use clap::{ArgAction, Parser};
-use config::{Config, File};
+use clap::{ ArgAction, Parser };
+use config::{ Config, File };
 use serde::Deserialize;
-use std::{env, net::SocketAddr};
-use tracing::{debug, instrument};
+use std::{ env, net::SocketAddr };
+use tracing::{ debug, instrument };
 
 const ENV_VAR_NAME: &str = "INDEXER_CONFIG_PATH";
 
@@ -142,7 +142,7 @@ pub struct CliSettings {
     pub database_create_index: bool,
     #[clap(long, env, default_value = TENDERMINT_ADDR)]
     pub indexer_tendermint_addr: String,
-    #[clap(long, env, action=ArgAction::SetFalse)]
+    #[clap(long, env, action = ArgAction::SetFalse)]
     pub jaeger_enable: bool,
     #[clap(long, env, default_value = JAEGER_HOST)]
     pub jaeger_host: String,
@@ -220,15 +220,15 @@ impl Settings {
         if let Ok(path) = env::var(ENV_VAR_NAME) {
             debug!("Reading configuration file from {}", path);
 
-            let config = Config::builder()
-                .add_source(File::with_name(&path))
-                .build()?;
+            let config = Config::builder().add_source(File::with_name(&path)).build()?;
 
             let settings: Self = config.try_deserialize().map_err(Error::from)?;
 
             // verify if network is correct
             if settings.network.contains('.') {
-                panic!("network cannot contains '.' (example of valid network 'public-testnet-14')")
+                panic!(
+                    "network cannot contains '.' (example of valid network 'public-testnet-14')"
+                );
             }
 
             return Ok(settings);

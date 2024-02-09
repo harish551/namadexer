@@ -1,4 +1,4 @@
-version: '3'
+version: "3"
 services:
   postgres:
     image: postgres:14
@@ -6,7 +6,7 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: wow
-      POSTGRES_DB: blockchain 
+      POSTGRES_DB: blockchain
     ports:
       - "5432:5432"
 
@@ -30,8 +30,8 @@ services:
       - RUST_LOG="namadexer=debug"
       - INDEXER_CONFIG_PATH=/app/config/Settings.toml
     volumes:
-       - ../config:/app/config
-       - ${PWD}/checksums.json:/app/checksums.json
+      - ../config:/app/config
+      - ${PWD}/checksums.json:/app/checksums.json
     ports:
       - "30303:30303"
     depends_on:

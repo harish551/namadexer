@@ -1,10 +1,9 @@
 # Development
 
-
 The full project can be run using the example `docker-compose.yml` file found under `./contrib`.
 
 ```yml
-version: '3'
+version: "3"
 services:
   postgres:
     image: postgres:14
@@ -12,7 +11,7 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: wow
-      POSTGRES_DB: blockchain 
+      POSTGRES_DB: blockchain
     ports:
       - "5433:5432"
 
@@ -36,8 +35,8 @@ services:
       - RUST_LOG="namadexer=debug"
       - INDEXER_CONFIG_PATH=/app/config/Settings.toml
     volumes:
-       - ../config:/app/config
-       - ${PWD}/checksums.json:/app/checksums.json
+      - ../config:/app/config
+      - ${PWD}/checksums.json:/app/checksums.json
     ports:
       - "30303:30303"
     depends_on:
@@ -49,6 +48,7 @@ services:
 The `Settings.toml` contains the required configuration data to connect to the Namada node and to the database. We also need the `checksums.json` file from the Namada node. It maps the hash code to the transaction type and is needed for deseriliazing transactions in the indexer and in the server.
 
 Launch the containers:
+
 ```
 $ docker compose -f contrib/docker-compose.yaml up --build
 ```
@@ -58,4 +58,3 @@ $ docker compose -f contrib/docker-compose.yaml up --build
 In addition, prometheus and grafana can be used to collect logs if the feature is activated. The docker compose file can be found under `./contrib/prometheus-compose.yml`.
 
 More info in the [telemetry](./telemetry.md) section.
-

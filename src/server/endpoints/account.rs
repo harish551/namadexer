@@ -1,12 +1,6 @@
-use axum::{
-    extract::{Path, State},
-    Json,
-};
+use axum::{ extract::{ Path, State }, Json };
 
-use crate::{
-    server::{account::AccountUpdates, ServerState},
-    Error,
-};
+use crate::{ server::{ account::AccountUpdates, ServerState }, Error };
 use sqlx::Row as TRow;
 
 /// Retrieves the update history for a specific account.
@@ -40,7 +34,7 @@ use sqlx::Row as TRow;
 /// issues encountered during the processing of the request.
 pub async fn get_account_updates(
     State(state): State<ServerState>,
-    Path(account_id): Path<String>,
+    Path(account_id): Path<String>
 ) -> Result<Json<Option<AccountUpdates>>, Error> {
     let Some(thresholds) = state.db.account_thresholds(&account_id).await? else {
         // account_id does not exists
@@ -77,10 +71,14 @@ pub async fn get_account_updates(
         .filter_map(|r| r.try_get::<Vec<String>, _>("public_keys_batch").ok())
         .collect();
 
-    Ok(Json(Some(AccountUpdates {
-        account_id,
-        thresholds,
-        code_hashes,
-        public_keys,
-    })))
+    Ok(
+        Json(
+            Some(AccountUpdates {
+                account_id,
+                thresholds,
+                code_hashes,
+                public_keys,
+            })
+        )
+    )
 }
