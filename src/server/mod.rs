@@ -27,7 +27,7 @@ use self::endpoints::{
     account::get_account_updates,
     block::{get_block_by_hash, get_block_by_height, get_last_block, get_blocks},
     transaction::{get_shielded_tx, get_tx_by_hash, get_vote_proposal, get_txs},
-    validator::get_validator_uptime,
+    validator::{get_validator_uptime,get_commit_signature}
 };
 
 pub const HTTP_DURATION_SECONDS_BUCKETS: &[f64; 11] = &[
@@ -54,6 +54,10 @@ fn server_routes(state: ServerState) -> Router<()> {
         .route(
             "/validator/:validator_address/uptime",
             get(get_validator_uptime),
+        )
+        .route(
+            "/validator/:validator_address/commit_signatures",
+            get(get_commit_signature),
         )
         .with_state(state)
 }

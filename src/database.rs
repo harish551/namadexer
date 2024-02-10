@@ -1349,6 +1349,24 @@ impl Database {
             .map_err(Error::from)
     }
 
+    pub async fn count_commit_signatures_by_validator(&self, validator_address: &[u8]) -> Result<i64, Error> {
+        let q = format!(
+            "SELECT COUNT(*)
+                FROM {0}.commit_signatures
+                WHERE validator_address = $1",
+            self.network
+        );
+    
+        let row: Row = sqlx::query(&q)
+            .bind(validator_address)
+            .fetch_one(&*self.pool).await
+            .map_err(Error::from)?;
+    
+        let count: i64 = row.get(0);
+    
+        Ok(count)
+    }
+
     pub fn pool(&self) -> &PgPool {
         self.pool.as_ref()
     }

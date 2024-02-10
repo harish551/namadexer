@@ -1,14 +1,11 @@
-use axum::{
-    extract::{Path, Query, State},
-    Json,
-};
-use serde::{Deserialize, Serialize};
+use axum::{ extract::{ Path, Query, State }, Json };
+use serde::{ Deserialize, Serialize };
 use sqlx::postgres::PgRow as Row;
 use sqlx::Row as TRow;
 use std::collections::HashMap;
-use tracing::{info, instrument};
+use tracing::{ info, instrument };
 
-use crate::{server::ServerState, Error};
+use crate::{ server::ServerState, Error };
 
 // Retrieve the count of commit for a range of blocks from the sql query result.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Default)]
@@ -34,7 +31,7 @@ pub struct UptimeValue {
 pub async fn get_validator_uptime(
     State(state): State<ServerState>,
     Path(validator_address): Path<String>,
-    Query(params): Query<HashMap<String, i32>>,
+    Query(params): Query<HashMap<String, i32>>
 ) -> Result<Json<UptimeValue>, Error> {
     info!("calling /validator/:validator_address/uptime");
 
@@ -57,4 +54,14 @@ pub async fn get_validator_uptime(
     };
 
     Ok(Json(uv))
+}
+
+pub async fn get_commit_signature(
+    State(state): State<ServerState>,
+    Path(validator_address): Path<String>
+) -> Result<Json<i64>, Error> {
+    match state.db.count_commit_signatures_by_validator(validator_address.as_bytes()).await {
+        Ok(count) => Ok(Json(count)),
+        Err(e) => Err(e),
+    }
 }
