@@ -59,7 +59,7 @@ compose:
 
 compose-build:
 	docker compose -f contrib/docker-compose.yaml up --build -d
-	docker compose -f contrib/docker-compose.yaml logs -f
+	docker compose -f contrib/docker-compose.yaml logs -f --tail 100
 
 test: download-checksum
 	cargo test save_block -- --nocapture
