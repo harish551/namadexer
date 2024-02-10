@@ -60,7 +60,8 @@ pub async fn get_commit_signature(
     State(state): State<ServerState>,
     Path(validator_address): Path<String>
 ) -> Result<Json<i64>, Error> {
-    match state.db.count_commit_signatures_by_validator(validator_address.as_bytes()).await {
+    let va = hex::decode(validator_address)?;
+    match state.db.count_commit_signatures_by_validator(&va).await {
         Ok(count) => Ok(Json(count)),
         Err(e) => Err(e),
     }
