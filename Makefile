@@ -1,6 +1,6 @@
 #!/bin/sh
 
-NAMADA_VERSION := 0.31.0
+NAMADA_VERSION := 0.31.1
 BASE_URL := https://raw.githubusercontent.com/anoma/namada
 URL := $(BASE_URL)/v$(NAMADA_VERSION)/wasm/checksums.json
 
@@ -56,6 +56,10 @@ benchmarks: download-checksum
 
 compose:
 	docker compose -f contrib/docker-compose.yaml up
+
+compose-build:
+	docker compose -f contrib/docker-compose.yaml up --build -d
+	docker-compose -f contrib/docker-compose.yaml logs -f
 
 test: download-checksum
 	cargo test save_block -- --nocapture
