@@ -1106,7 +1106,7 @@ impl Database {
 
         // Create the SQL query
         let query = format!(
-            "SELECT * FROM {0}.{TX_TABLE_NAME} ORDER BY created_at DESC LIMIT {1} OFFSET {2}",
+            "SELECT * FROM {}.{TX_TABLE_NAME} ORDER BY created_at DESC LIMIT {1} OFFSET {2}",
             self.network,
             page_size,
             offset
