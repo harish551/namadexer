@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{ Deserialize, Serialize };
 
 /// The relevant information regarding accounts.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Default)]

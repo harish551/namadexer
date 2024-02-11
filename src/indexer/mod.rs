@@ -8,11 +8,11 @@ use std::time::Duration;
 use tendermint::block::Block;
 use tendermint::block::Height;
 use tendermint_rpc::endpoint::block_results;
-use tendermint_rpc::{self, Client, HttpClient};
+use tendermint_rpc::{ self, Client, HttpClient };
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::Sender;
 use tokio::task::JoinHandle;
-use tracing::{info, instrument};
+use tracing::{ info, instrument };
 
 use crate::config::IndexerConfig;
 use crate::utils::load_checksums;
@@ -49,16 +49,11 @@ async fn get_block(block_height: u32, client: &HttpClient) -> (Block, block_resu
         match response {
             Ok(resp) => {
                 info!("Got block {}", block_height);
-                let labels = [(
-                    "indexer_get_block: ",
-                    resp.block.header.height.value().to_string(),
-                )];
+                let labels = [
+                    ("indexer_get_block: ", resp.block.header.height.value().to_string()),
+                ];
 
-                metrics::histogram!(
-                    crate::INDEXER_GET_BLOCK_DURATION,
-                    dur.as_secs_f64(),
-                    &labels
-                );
+                metrics::histogram!(crate::INDEXER_GET_BLOCK_DURATION, dur.as_secs_f64(), &labels);
 
                 // If we successfully retrieved a block we want to get the block result.
                 // It is used to know if a transaction has been successfully or not.
@@ -71,19 +66,15 @@ async fn get_block(block_height: u32, client: &HttpClient) -> (Block, block_resu
 
             Err(err) => {
                 let labels = [("indexer_get_block_error: ", err.detail().to_string())];
-                metrics::histogram!(
-                    crate::INDEXER_GET_BLOCK_DURATION,
-                    dur.as_secs_f64(),
-                    &labels
-                );
+                metrics::histogram!(crate::INDEXER_GET_BLOCK_DURATION, dur.as_secs_f64(), &labels);
 
                 match &err.0 {
                     tendermint_rpc::error::ErrorDetail::Response(e) => {
                         tracing::warn!(
-                                "Failed to retreive block at height {}. Trying again in 10 seconds. (REASON : {})",
-                                block_height,
-                                e,
-                            );
+                            "Failed to retreive block at height {}. Trying again in 10 seconds. (REASON : {})",
+                            block_height,
+                            e
+                        );
                         // Wait WAIT_FOR_BLOCK seconds before asking for new block
                         // because it has probably not been validated yet
                         tokio::time::sleep(Duration::from_secs(WAIT_FOR_BLOCK)).await;
@@ -92,14 +83,14 @@ async fn get_block(block_height: u32, client: &HttpClient) -> (Block, block_resu
                         tracing::warn!(
                             "Failed to retreive block at height {}. (REASON : {})",
                             block_height,
-                            e,
+                            e
                         );
                     }
                     _ => {
                         tracing::warn!(
                             "Failed to retreive block at height {}. (REASON : {})",
                             block_height,
-                            err.detail(),
+                            err.detail()
                         );
                     }
                 }
@@ -111,7 +102,7 @@ async fn get_block(block_height: u32, client: &HttpClient) -> (Block, block_resu
 #[instrument(name = "Indexer::block_results", skip(client))]
 async fn get_block_results(
     block_height: Height,
-    client: &HttpClient,
+    client: &HttpClient
 ) -> Result<block_results::Response, Error> {
     let response = client.block_results(block_height).await;
 
@@ -121,10 +112,10 @@ async fn get_block_results(
             match &err.0 {
                 tendermint_rpc::error::ErrorDetail::Response(e) => {
                     tracing::warn!(
-                            "Failed to retreive block at height {}. Trying again in 10 seconds. (REASON : {})",
-                            block_height,
-                            e,
-                        );
+                        "Failed to retreive block at height {}. Trying again in 10 seconds. (REASON : {})",
+                        block_height,
+                        e
+                    );
                     // Wait WAIT_FOR_BLOCK seconds before asking for new block
                     // because it has probably not been validated yet
                     tokio::time::sleep(Duration::from_secs(WAIT_FOR_BLOCK)).await;
@@ -133,14 +124,14 @@ async fn get_block_results(
                     tracing::warn!(
                         "Failed to retreive block at height {}. (REASON : {})",
                         block_height,
-                        e,
+                        e
                     );
                 }
                 _ => {
                     tracing::warn!(
                         "Failed to retreive block at height {}. (REASON : {})",
                         block_height,
-                        err.detail(),
+                        err.detail()
                     );
                 }
             }
@@ -154,7 +145,7 @@ async fn get_block_results(
 #[instrument(name = "Indexer::blocks_stream", skip(client, block))]
 fn blocks_stream(
     block: u64,
-    client: &HttpClient,
+    client: &HttpClient
 ) -> impl Stream<Item = (Block, block_results::Response)> + '_ {
     futures::stream::iter(block..).then(move |i| async move { get_block(i as u32, client).await })
 }
@@ -169,7 +160,7 @@ fn blocks_stream(
 pub async fn start_indexing(
     db: Database,
     config: &IndexerConfig,
-    create_index: bool,
+    create_index: bool
 ) -> Result<(), Error> {
     info!("***** Starting indexer *****");
 
@@ -217,8 +208,11 @@ pub async fn start_indexing(
 
     // Spaw block producer task, this could speed up saving blocks
     // because it does not need to wait for database to finish saving a block.
-    let (mut rx, producer_handler) =
-        spawn_block_producer(current_height as _, client, producer_shutdown);
+    let (mut rx, producer_handler) = spawn_block_producer(
+        current_height as _,
+        client,
+        producer_shutdown
+    );
 
     // Block consumer that stores block into the database
     while let Some(block) = rx.recv().await {
@@ -262,11 +256,12 @@ pub async fn start_indexing(
 fn spawn_block_producer(
     current_height: u64,
     client: HttpClient,
-    producer_shutdown: Arc<AtomicBool>,
+    producer_shutdown: Arc<AtomicBool>
 ) -> (Receiver<BlockInfo>, JoinHandle<Result<(), Error>>) {
     // Create a channel
-    let (tx, rx): (Sender<BlockInfo>, Receiver<BlockInfo>) =
-        tokio::sync::mpsc::channel(MAX_BLOCKS_IN_CHANNEL);
+    let (tx, rx): (Sender<BlockInfo>, Receiver<BlockInfo>) = tokio::sync::mpsc::channel(
+        MAX_BLOCKS_IN_CHANNEL
+    );
 
     // Spawn the task
     let handler = tokio::spawn(async move {

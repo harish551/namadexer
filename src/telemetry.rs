@@ -1,9 +1,9 @@
 use tracing::Subscriber;
 use tracing_subscriber::Layer;
 
-use tracing_subscriber::{filter::filter_fn, layer::SubscriberExt, EnvFilter, Registry};
+use tracing_subscriber::{ filter::filter_fn, layer::SubscriberExt, EnvFilter, Registry };
 
-use crate::{JaegerConfig, Settings};
+use crate::{ JaegerConfig, Settings };
 use opentelemetry_api::global;
 
 /// Setup looging this includes a fmt::layer and jaeger(if enable)
@@ -22,8 +22,9 @@ pub fn setup_logging(cfg: &Settings) {
 pub fn get_subscriber(cfg: &Settings) -> impl Subscriber + Send + Sync {
     // Get tracing filter either log, debug, trace, error,warning
     // otherwise use the log_level setting from configuration file.
-    let env_filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&cfg.log_level));
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_|
+        EnvFilter::new(&cfg.log_level)
+    );
 
     // send any logs to stdout
     let std_out = tracing_subscriber::fmt::layer().pretty();
@@ -35,10 +36,7 @@ pub fn get_subscriber(cfg: &Settings) -> impl Subscriber + Send + Sync {
         jaeger = Some(jaeger_layer(jaeger_cfg));
     }
 
-    Registry::default()
-        .with(env_filter)
-        .with(std_out)
-        .with(jaeger)
+    Registry::default().with(env_filter).with(std_out).with(jaeger)
 }
 
 /// Sets the passed in `subscriber` as the global one.
@@ -59,11 +57,11 @@ pub fn init_subscriber(subscriber: impl Subscriber + Send + Sync) {
 
 /// Creates a tracing layer that sends traces to configured Jaeger service.
 pub fn jaeger_layer<S>(cfg: &JaegerConfig) -> impl Layer<S> + Send + Sync
-where
-    S: tracing::Subscriber
-        + Sync
-        + Send
-        + for<'span> tracing_subscriber::registry::LookupSpan<'span>,
+    where
+        S: tracing::Subscriber +
+            Sync +
+            Send +
+            for<'span> tracing_subscriber::registry::LookupSpan<'span>
 {
     let endpoint = format!("{}:{}", cfg.host, cfg.port);
 
@@ -71,7 +69,8 @@ where
     // that would be collected differently.
     global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
 
-    let tracer = opentelemetry_jaeger::new_agent_pipeline()
+    let tracer = opentelemetry_jaeger
+        ::new_agent_pipeline()
         .with_endpoint(endpoint)
         .with_service_name("indexer-traces")
         .install_simple()
@@ -84,11 +83,13 @@ where
     // - save evidences
     // - save transactions
     // - get_block
-    jaeger_layer.with_filter(filter_fn(|metadata| {
-        let target = metadata.name();
-        target.contains("save_block")
-            || target.contains("save_evidences")
-            || target.contains("save_transactions")
-            || target.contains("get_block")
-    }))
+    jaeger_layer.with_filter(
+        filter_fn(|metadata| {
+            let target = metadata.name();
+            target.contains("save_block") ||
+                target.contains("save_evidences") ||
+                target.contains("save_transactions") ||
+                target.contains("get_block")
+        })
+    )
 }

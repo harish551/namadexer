@@ -1,6 +1,5 @@
 pub(crate) fn insert_block_query(network: &str) -> String {
-    format!(
-        r#"INSERT INTO {}.blocks (
+    format!(r#"INSERT INTO {}.blocks (
         block_id, 
         header_version_app, 
         header_version_block, 
@@ -28,7 +27,5 @@ pub(crate) fn insert_block_query(network: &str) -> String {
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 
         $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 
         $21, $22, $23
-    )"#,
-        network
-    )
+    )"#, network)
 }

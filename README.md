@@ -10,10 +10,9 @@ The project is composed of 2 entities : the `indexer` and the `server`. They are
 
 - the `indexer`: This component establishes a connection to the Namada node via RPC and collects blocks and transactions. It then stores this data in a PostgreSQL database. The indexer operates independently of the server and can be initiated on its own.
 
-- the `server`: This is a JSON-based server that facilitates querying of blocks and transactions using unique identifiers. It also provides additional useful endpoints, such as  `/blocks/latest`.  A comprehensive list of all endpoints, along with their descriptions, is available in the documentation.
+- the `server`: This is a JSON-based server that facilitates querying of blocks and transactions using unique identifiers. It also provides additional useful endpoints, such as `/blocks/latest`. A comprehensive list of all endpoints, along with their descriptions, is available in the documentation.
 
 These services require a connection to a [postgres](https://www.postgresql.org/) database. Support for [OpenTelemetry](https://opentelemetry.io/) has also been added.
-
 
 ## Documentation
 
@@ -36,11 +35,13 @@ $ make install-deps
 ### Start developping
 
 Start the docker database :
+
 ```
 $ make postgres
 ```
 
 You will need to use this command if you want to avoid issues with protoc.
+
 ```
 $ make run
 ```
@@ -48,15 +49,19 @@ $ make run
 ## Telemetry
 
 Run jaeger in background
+
 ```
 $ docker run -d -p6831:6831/udp -p6832:6832/udp -p16686:16686 -p14268:14268 jaegertracing/all-in-one:latest
 ```
+
 Start the indexer
+
 ```
 $ RUST_LOG=trace cargo run --bin indexer
 ```
 
 View spans
+
 ```
 $ firefox http://localhost:16686/
 ```

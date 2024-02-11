@@ -11,6 +11,7 @@ This documentation provides details on the telemetry configuration for the index
 Jaeger is a powerful tool used for monitoring and troubleshooting microservices-based distributed systems. With capabilities like distributed context propagation and transaction monitoring, Jaeger traces requests as they traverse through various services, helping developers identify bottlenecks and performance issues.
 
 For the indexer application, Jaeger has been configured to trace the following operations:
+
 - `save_block`: Tracks the process of saving a block.
 - `save_evidences`: Monitors the time and operations taken to save block evidences.
 - `save_transactions`: Observes the transaction saving process.
@@ -96,6 +97,7 @@ The Prometheus server for the indexer application is controlled via a Rust featu
 default = []
 prometheus = ["metrics-exporter-prometheus", "axum-prometheus"]
 ```
+
 This feature flags also enables prometheus metrics for the json-server.
 
 By default, the Prometheus feature is disabled. To enable Prometheus and run the indexer service, use the following command:
@@ -103,13 +105,14 @@ By default, the Prometheus feature is disabled. To enable Prometheus and run the
 ```bash
 RUST_LOG=info cargo run --bin indexer --features prometheus
 ```
-This will deploy a server that the prometheus service can make request to for metrics. Bellow how to configure the prometheus service that this application provides and can easily be run  using docker compose.
+
+This will deploy a server that the prometheus service can make request to for metrics. Bellow how to configure the prometheus service that this application provides and can easily be run using docker compose.
 
 ## Prometheus Scrape Configuration
 
-Prometheus operates by "scraping" or polling exposed endpoints (or targets) at regular intervals to collect metrics. 
-The configuration that dictates which endpoints to scrape, how often to scrape them, and other scraping-related parameters is 
-defined under `scrape_configs` in the `monitoring/prometheus/prometheus.yml` configuration file. 
+Prometheus operates by "scraping" or polling exposed endpoints (or targets) at regular intervals to collect metrics.
+The configuration that dictates which endpoints to scrape, how often to scrape them, and other scraping-related parameters is
+defined under `scrape_configs` in the `monitoring/prometheus/prometheus.yml` configuration file.
 
 ### Scrape Configuration Breakdown
 
@@ -120,12 +123,12 @@ scrape_configs:
   - job_name: namada_indexer_metrics
     scrape_interval: 5s
     static_configs:
-      - targets: ['host.docker.internal:9000']
+      - targets: ["host.docker.internal:9000"]
 
   - job_name: cadvisor
     scrape_interval: 5s
     static_configs:
-      - targets: ['cadvisor:8080']
+      - targets: ["cadvisor:8080"]
 ```
 
 #### Configuration Breakdown:
@@ -134,17 +137,15 @@ scrape_configs:
 
 - **scrape_interval**: Specifies how often Prometheus should scrape the target endpoints. Both jobs are set to be scraped every 5 seconds.
 
-- **static_configs** & **targets**: 
+- **static_configs** & **targets**:
   - For `namada_indexer_metrics`, the target is set to `host.docker.internal:9000`. This configuration works seamlessly on Windows and macOS. For Linux environments, ensure that the `network_mode` is set to `host` in the Docker Compose configuration for Prometheus.
   - For `cadvisor`, the target is `cadvisor:8080`, which is a typical setting when using cAdvisor for container monitoring.
 
 ### Important Note on Target Configuration
 
-The `targets` field in the scrape configuration *must align* with where your service exposes its metrics. In this context, the indexer application is the service that deploys a server exposing metrics. Thus, for `namada_indexer_metrics`, the target `host.docker.internal:9000` should match the port (`9000`) and address where the indexer service exposes its Prometheus metrics.
-
+The `targets` field in the scrape configuration _must align_ with where your service exposes its metrics. In this context, the indexer application is the service that deploys a server exposing metrics. Thus, for `namada_indexer_metrics`, the target `host.docker.internal:9000` should match the port (`9000`) and address where the indexer service exposes its Prometheus metrics.
 
 For advanced configurations, troubleshooting, or further reading, it's recommended to refer to the official Prometheus documentation or consult with monitoring experts.
-
 
 ### Prometheus Metrics Collector Deployment
 
@@ -153,7 +154,7 @@ A Docker Compose file is available to facilitate the deployment of a container, 
 Here's the Docker Compose configuration:
 
 ```yaml
-version: '3.8'
+version: "3.8"
 services:
   # Services for monitoring
   # Comment out the services below if monitoring is not required
@@ -162,13 +163,13 @@ services:
     container_name: prometheus
     restart: always
     ports:
-      - '9090:9090'
+      - "9090:9090"
     network_mode: "host"
     volumes:
       - ../monitoring/prometheus:/etc/prometheus
     command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--web.external-url=http://localhost:9090'
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--web.external-url=http://localhost:9090"
 
   grafana:
     image: grafana/grafana:latest
@@ -176,7 +177,7 @@ services:
     user: "472:472"
     restart: always
     ports:
-      - '3000:3000'
+      - "3000:3000"
 
     network_mode: "host"
     volumes:
@@ -193,8 +194,8 @@ To launch the Prometheus collector service on a Linux environment, ensure that t
 docker compose -f contrib/prometheus-compose.yaml up -d
 
 ```
-## Grafana Telemetry Configuration
 
+## Grafana Telemetry Configuration
 
 Grafana provides a powerful dashboarding platform that complements Prometheus by visualizing the metrics collected. This section details how Grafana is set up to communicate with the Prometheus service collector associated with the indexer application.
 
@@ -209,7 +210,7 @@ grafana:
   user: "472:472"
   restart: always
   ports:
-    - '3000:3000'
+    - "3000:3000"
   network_mode: "host"
   volumes:
     - ../monitoring/grafana/data:/var/lib/grafana
@@ -222,10 +223,9 @@ grafana:
 #### Configuration Breakdown:
 
 - **Image**: The Grafana container is built from the official latest Grafana image.
-  
 - **Ports**: By default, Grafana is accessible on port 3000.
-  
 - **Volumes**: Two volumes are defined:
+
   - **Data volume**: Stores Grafana data like dashboard settings, panels, etc.
   - **Provisioning volume**: Contains Grafana's provisioning configurations.
 

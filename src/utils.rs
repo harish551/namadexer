@@ -1,6 +1,6 @@
 use namada_sdk::tx::data::TxType;
 use std::collections::HashMap;
-use std::{env, fs};
+use std::{ env, fs };
 
 const CHECKSUMS_FILE_PATH_ENV: &str = "CHECKSUMS_FILE_PATH";
 const CHECKSUMS_REMOTE_URL_ENV: &str = "CHECKSUMS_REMOTE_URL";
@@ -21,10 +21,12 @@ pub fn load_checksums() -> Result<HashMap<String, String>, crate::Error> {
 
     let checksums = match (checksums_file_path, checksums_remote_url) {
         (Ok(path), _) => fs::read_to_string(path)?,
-        (_, Ok(url)) => ureq::get(&url)
-            .call()
-            .map_err(|e| crate::Error::Generic(Box::new(e)))?
-            .into_string()?,
+        (_, Ok(url)) =>
+            ureq
+                ::get(&url)
+                .call()
+                .map_err(|e| crate::Error::Generic(Box::new(e)))?
+                .into_string()?,
         _ => fs::read_to_string(CHECKSUMS_DEFAULT_PATH)?,
     };
 
@@ -33,8 +35,7 @@ pub fn load_checksums() -> Result<HashMap<String, String>, crate::Error> {
 
     let mut checksums_map = HashMap::new();
     for value in obj.iter() {
-        let hash = value
-            .1
+        let hash = value.1
             .as_str()
             .ok_or(crate::Error::InvalidChecksum)?
             .split('.')
