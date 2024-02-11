@@ -68,7 +68,7 @@ pub struct Database {
 impl Database {
     pub async fn new(db_config: &DatabaseConfig, network: &str) -> Result<Database, Error> {
         // sqlx expects config of the form:
-        // postgres://user:password@host/db_name
+        // postgres://user:password@host:port/db_name
         let config = format!(
             "postgres://{}:{}@{}/{}",
             db_config.user,
@@ -706,8 +706,7 @@ impl Database {
                                     .push_bind(tx_bridge.transfer.sender.to_string())
                                     .push_bind(tx_bridge.transfer.amount.to_string_native())
                                     .push_bind(tx_bridge.gas_fee.amount.to_string_native())
-                                    .push_bind(tx_bridge.gas_fee.payer.to_string())
-                                    .push_bind(false);
+                                    .push_bind(tx_bridge.gas_fee.payer.to_string());
                             })
                             .build();
                         query.execute(&mut *sqlx_tx).await?;
@@ -1372,6 +1371,22 @@ impl Database {
         let count: i64 = row.get(0);
     
         Ok(count)
+    }
+
+    #[instrument(skip(self))]
+    /// Returns the latest block, otherwise returns an Error.
+    pub async fn get_lastest_blocks(
+        &self,
+        num: &i32,
+        offset: Option<&i32>,
+    ) -> Result<Vec<Row>, Error> {
+        let str = format!("SELECT * FROM {0}.{BLOCKS_TABLE_NAME} ORDER BY header_height DESC LIMIT {1} OFFSET {2};", self.network, num, offset.unwrap_or(&  0));
+
+        // use query_one as the row matching max height is unique.
+        query(&str)
+            .fetch_all(&*self.pool)
+            .await
+            .map_err(Error::from)
     }
 
     pub fn pool(&self) -> &PgPool {
