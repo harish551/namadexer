@@ -95,6 +95,8 @@ pub struct TxInfo {
     data: Option<Vec<u8>>,
     /// Inner transaction type
     tx: Option<TxDecoded>,
+
+    return_code: Option<i32>
 }
 
 impl TxInfo {
@@ -202,6 +204,7 @@ impl TryFrom<Row> for TxInfo {
         let gas_limit_multiplier = row.try_get("gas_limit_multiplier")?;
         let code: Option<Vec<u8>> = row.try_get("code")?;
         let data: Option<Vec<u8>> = row.try_get("data")?;
+        let return_code: Option<i32> = row.try_get("return_code")?;
 
         Ok(Self {
             hash,
@@ -213,6 +216,7 @@ impl TryFrom<Row> for TxInfo {
             gas_limit_multiplier,
             code,
             data,
+            return_code,
             tx: None,
         })
     }
