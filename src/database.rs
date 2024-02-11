@@ -1016,6 +1016,13 @@ impl Database {
             ).as_str()
         ).execute(&*self.pool).await?;
 
+        query(
+            format!(
+                "CREATE INDEX x_validator_address ON {}.commit_signatures (validator_address);",
+                self.network
+            ).as_str()
+        ).execute(&*self.pool).await?;
+
         Ok(())
     }
 
