@@ -1,20 +1,21 @@
-use serde::{Deserialize, Serialize};
+use serde::{ Deserialize, Serialize };
 use std::str::FromStr;
-use tracing::{instrument, trace};
+use tracing::{ instrument, trace };
 
 use sqlx::postgres::PgRow as Row;
 use sqlx::Row as TRow;
-use tendermint::block::{Height, Round};
+use tendermint::block::{ Height, Round };
 use tendermint::AppHash;
 use tendermint::{
     account::Id as AccountId,
     block::header::Version,
-    block::{parts::Header as PartSetHeader, Header, Id as BlockId},
+    block::{ parts::Header as PartSetHeader, Header, Id as BlockId },
     chain::Id,
-    Hash, Time,
+    Hash,
+    Time,
 };
 
-use super::{from_hex, serialize_hex};
+use super::{ from_hex, serialize_hex };
 use crate::error::Error;
 
 /// Last commit info in a block
@@ -27,7 +28,7 @@ pub struct LastCommitInfo {
 
 impl LastCommitInfo {
     fn read_from(row: &Row) -> Result<Option<Self>, Error> {
-        tracing::trace!("Deserializing LastCommitInfo",);
+        tracing::trace!("Deserializing LastCommitInfo");
 
         // height
         let height: Option<i32> = row.try_get("commit_height")?;
@@ -70,11 +71,13 @@ impl LastCommitInfo {
             part_set_header,
         };
 
-        Ok(Some(Self {
-            height,
-            round,
-            block_id,
-        }))
+        Ok(
+            Some(Self {
+                height,
+                round,
+                block_id,
+            })
+        )
     }
 }
 
@@ -97,6 +100,18 @@ pub struct BlockInfo {
     pub header: Header,
     pub last_commit: Option<LastCommitInfo>,
     pub tx_hashes: Vec<TxShort>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Paging {
+    pub page: i32,
+    pub page_size: i32,
+}
+
+#[derive(Serialize)]
+pub struct Response {
+    pub data: Vec<BlockInfo>,
+    pub total: i64,
 }
 
 impl From<BlockInfo> for Header {
@@ -123,11 +138,7 @@ impl TryFrom<&Row> for BlockInfo {
             block: block_version as u64,
             app: app_version as u64,
         };
-        trace!(
-            "parsed block_version: {} - app_version: {}",
-            block_version,
-            app_version
-        );
+        trace!("parsed block_version: {} - app_version: {}", block_version, app_version);
 
         // chain_id
         let chain_id: String = row.try_get("header_chain_id")?;

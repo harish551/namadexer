@@ -6,7 +6,7 @@ Install earthly from [here](https://earthly.dev/get-earthly)
 
 ## Running
 
-If you have WARP access, you can speed up your builds by defining: 
+If you have WARP access, you can speed up your builds by defining:
 
 ```bash
 export EARTHLY_BUILDKIT_HOST=tcp://buildkit.zondax.dev:8372

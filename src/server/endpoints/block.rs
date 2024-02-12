@@ -8,8 +8,9 @@ use std::collections::HashMap;
 use tracing::info;
 
 use crate::{
-    server::{blocks::HashID, blocks::TxShort, ServerState},
-    BlockInfo, Error,
+    server::{ blocks::HashID, blocks::{ TxShort, Paging, Response }, ServerState },
+    BlockInfo,
+    Error,
 };
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
@@ -22,7 +23,7 @@ pub enum LatestBlock {
 async fn get_tx_hashes(
     state: &ServerState,
     block: &mut BlockInfo,
-    hash: &[u8],
+    hash: &[u8]
 ) -> Result<(), Error> {
     let rows = state.db.get_tx_hashes_block(hash).await?;
 
@@ -41,7 +42,7 @@ async fn get_tx_hashes(
 
 pub async fn get_block_by_hash(
     State(state): State<ServerState>,
-    Path(hash): Path<String>,
+    Path(hash): Path<String>
 ) -> Result<Json<Option<BlockInfo>>, Error> {
     info!("calling /block/hash/:block_hash");
 
@@ -61,7 +62,7 @@ pub async fn get_block_by_hash(
 
 pub async fn get_block_by_height(
     State(state): State<ServerState>,
-    Path(height): Path<u32>,
+    Path(height): Path<u32>
 ) -> Result<Json<Option<BlockInfo>>, Error> {
     info!("calling /block/height/:block_height");
 
@@ -111,4 +112,26 @@ pub async fn get_last_block(
 
         Ok(Json(LatestBlock::LastBlock(Box::new(block))))
     }
+}
+
+pub async fn get_blocks(
+    State(state): State<ServerState>,
+    Query(paging): Query<Paging>
+) -> Result<Json<Response>, Error> {
+    let rows = state.db.get_blocks(paging.page, paging.page_size).await?;
+
+    let mut blocks = Vec::new();
+
+    for row in rows {
+        let mut block = BlockInfo::try_from(&row)?;
+
+        let block_id: Vec<u8> = row.try_get("block_id")?;
+        get_tx_hashes(&state, &mut block, &block_id).await?;
+
+        blocks.push(block);
+    }
+
+    let total = state.db.get_total_block().await?;
+
+    Ok(Json(Response { data: blocks, total }))
 }

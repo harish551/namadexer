@@ -1,19 +1,15 @@
-use axum::{
-    extract::{Path, State},
-    Json,
-};
+use axum::{ extract::{ Path, State, Query }, Json };
 use tracing::info;
 
 use crate::{
-    server::{shielded, tx::VoteProposalTx, ServerState, TxInfo},
+    server::{ shielded, tx::{ VoteProposalTx, Response, Paging }, ServerState, TxInfo },
     Error,
 };
-
 use sqlx::Row as TRow;
 
 pub async fn get_tx_by_hash(
     State(state): State<ServerState>,
-    Path(hash): Path<String>,
+    Path(hash): Path<String>
 ) -> Result<Json<Option<TxInfo>>, Error> {
     info!("calling /tx/:tx_hash{}", hash);
 
@@ -32,9 +28,10 @@ pub async fn get_tx_by_hash(
 }
 
 // Return a list of the shielded assets and their total compiled using all the shielded transactions (in, internal and out)
-pub async fn get_shielded_tx(
-    State(state): State<ServerState>,
-) -> Result<Json<shielded::ShieldedAssetsResponse>, Error> {
+pub async fn get_shielded_tx(State(state): State<ServerState>) -> Result<
+    Json<shielded::ShieldedAssetsResponse>,
+    Error
+> {
     let rows = state.db.get_shielded_tx().await?;
 
     let shielded_assests_response = shielded::ShieldedAssetsResponse::try_from(&rows)?;
@@ -44,7 +41,7 @@ pub async fn get_shielded_tx(
 
 pub async fn get_vote_proposal(
     State(state): State<ServerState>,
-    Path(proposal_id): Path<u64>,
+    Path(proposal_id): Path<u64>
 ) -> Result<Json<Option<VoteProposalTx>>, Error> {
     let vote_proposal_data = state.db.vote_proposal_data(proposal_id).await?;
 
@@ -59,14 +56,29 @@ pub async fn get_vote_proposal(
 
     let delegations: Vec<String> = delegations
         .into_iter()
-        .filter_map(|row| {
-            row.try_get::<Option<String>, _>("delegator_id")
-                .ok()
-                .flatten()
-        })
+        .filter_map(|row| { row.try_get::<Option<String>, _>("delegator_id").ok().flatten() })
         .collect::<Vec<String>>();
 
     tx.delegations = delegations;
 
     Ok(Json(Some(tx)))
+}
+
+pub async fn get_txs(
+    State(state): State<ServerState>,
+    Query(paging): Query<Paging>
+) -> Result<Json<Response>, Error> {
+    let rows = state.db.get_txs(paging.page, paging.page_size).await?;
+
+    let mut txs = Vec::new();
+    for row in rows {
+        let mut tx = TxInfo::try_from(row)?;
+        // ignore the error for now
+        _ = tx.decode_tx(&state.checksums_map);
+        txs.push(tx);
+    }
+
+    let total = state.db.get_total_txs().await?;
+
+    Ok(Json(Response { data: txs, total }))
 }

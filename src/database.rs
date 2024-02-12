@@ -1,20 +1,13 @@
 use crate::queries::insert_block_query;
-use crate::{config::DatabaseConfig, error::Error, utils};
+use crate::{ config::DatabaseConfig, error::Error, utils };
 
 use namada_sdk::types::key::common::PublicKey;
 use namada_sdk::{
-    account::{InitAccount, UpdateAccount},
+    account::{ InitAccount, UpdateAccount },
     borsh::BorshDeserialize,
     governance::VoteProposalData,
     tendermint_proto::types::EvidenceList as RawEvidenceList,
-    tx::{
-        data::{
-            pgf::UpdateStewardCommission,
-            pos::{Bond, Unbond},
-            TxType,
-        },
-        Tx,
-    },
+    tx::{ data::{ pgf::UpdateStewardCommission, pos::{ Bond, Unbond }, TxType }, Tx },
     types::{
         address::Address,
         eth_bridge_pool::PendingTransfer,
@@ -22,9 +15,9 @@ use namada_sdk::{
         token,
     },
 };
-use sqlx::postgres::{PgPool, PgPoolOptions, PgRow as Row};
+use sqlx::postgres::{ PgPool, PgPoolOptions, PgRow as Row };
 use sqlx::Row as TRow;
-use sqlx::{query, QueryBuilder, Transaction};
+use sqlx::{ query, QueryBuilder, Transaction };
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -32,23 +25,32 @@ use tendermint::block::Block;
 use tendermint_proto::types::evidence::Sum;
 use tendermint_proto::types::CommitSig;
 use tendermint_rpc::endpoint::block_results;
-use tracing::{info, instrument, trace};
+use tracing::{ info, instrument, trace };
 
 use crate::{
-    DB_SAVE_BLOCK_COUNTER, DB_SAVE_BLOCK_DURATION, DB_SAVE_COMMIT_SIG_DURATION,
-    DB_SAVE_EVDS_DURATION, DB_SAVE_TXS_DURATION, MASP_ADDR,
+    DB_SAVE_BLOCK_COUNTER,
+    DB_SAVE_BLOCK_DURATION,
+    DB_SAVE_COMMIT_SIG_DURATION,
+    DB_SAVE_EVDS_DURATION,
+    DB_SAVE_TXS_DURATION,
+    MASP_ADDR,
 };
 
 use crate::tables::{
-    get_create_account_public_keys_table, get_create_account_updates_table,
-    get_create_block_table_query, get_create_commit_signatures_table_query,
-    get_create_delegations_table, get_create_evidences_table_query,
-    get_create_transactions_table_query, get_create_tx_bond_table_query,
-    get_create_tx_bridge_pool_table_query, get_create_tx_transfer_table_query,
+    get_create_account_public_keys_table,
+    get_create_account_updates_table,
+    get_create_block_table_query,
+    get_create_commit_signatures_table_query,
+    get_create_delegations_table,
+    get_create_evidences_table_query,
+    get_create_transactions_table_query,
+    get_create_tx_bond_table_query,
+    get_create_tx_bridge_pool_table_query,
+    get_create_tx_transfer_table_query,
     get_create_vote_proposal_table,
 };
 
-use metrics::{histogram, increment_counter};
+use metrics::{ histogram, increment_counter };
 
 const BLOCKS_TABLE_NAME: &str = "blocks";
 const TX_TABLE_NAME: &str = "transactions";
@@ -68,8 +70,11 @@ impl Database {
         // sqlx expects config of the form:
         // postgres://user:password@host:port/db_name
         let config = format!(
-            "postgres://{}:{}@{}:{}/{}",
-            db_config.user, db_config.password, db_config.host, db_config.port, db_config.dbname
+            "postgres://{}:{}@{}/{}",
+            db_config.user,
+            db_config.password,
+            db_config.host,
+            db_config.dbname
         );
 
         // If timeout setting is not present in the provided configuration,
@@ -79,8 +84,7 @@ impl Database {
         let pool = PgPoolOptions::new()
             .max_connections(10)
             .acquire_timeout(Duration::from_secs(timeout))
-            .connect(&config)
-            .await?;
+            .connect(&config).await?;
 
         let network_schema = network.replace('-', "_");
 
@@ -112,53 +116,39 @@ impl Database {
     pub async fn create_tables(&self) -> Result<(), Error> {
         info!("Creating tables if they don't exist");
 
-        query(&format!("CREATE SCHEMA IF NOT EXISTS {}", self.network))
-            .execute(&*self.pool)
-            .await?;
+        query(&format!("CREATE SCHEMA IF NOT EXISTS {}", self.network)).execute(&*self.pool).await?;
 
-        query(get_create_block_table_query(&self.network).as_str())
-            .execute(&*self.pool)
-            .await?;
+        query(get_create_block_table_query(&self.network).as_str()).execute(&*self.pool).await?;
 
-        query(get_create_commit_signatures_table_query(&self.network).as_str())
-            .execute(&*self.pool)
-            .await?;
+        query(get_create_commit_signatures_table_query(&self.network).as_str()).execute(
+            &*self.pool
+        ).await?;
 
-        query(get_create_transactions_table_query(&self.network).as_str())
-            .execute(&*self.pool)
-            .await?;
+        query(get_create_transactions_table_query(&self.network).as_str()).execute(
+            &*self.pool
+        ).await?;
 
-        query(get_create_evidences_table_query(&self.network).as_str())
-            .execute(&*self.pool)
-            .await?;
+        query(get_create_evidences_table_query(&self.network).as_str()).execute(&*self.pool).await?;
 
-        query(get_create_tx_transfer_table_query(&self.network).as_str())
-            .execute(&*self.pool)
-            .await?;
+        query(get_create_tx_transfer_table_query(&self.network).as_str()).execute(
+            &*self.pool
+        ).await?;
 
-        query(get_create_tx_bond_table_query(&self.network).as_str())
-            .execute(&*self.pool)
-            .await?;
+        query(get_create_tx_bond_table_query(&self.network).as_str()).execute(&*self.pool).await?;
 
-        query(get_create_tx_bridge_pool_table_query(&self.network).as_str())
-            .execute(&*self.pool)
-            .await?;
+        query(get_create_tx_bridge_pool_table_query(&self.network).as_str()).execute(
+            &*self.pool
+        ).await?;
 
-        query(get_create_account_updates_table(&self.network).as_str())
-            .execute(&*self.pool)
-            .await?;
+        query(get_create_account_updates_table(&self.network).as_str()).execute(&*self.pool).await?;
 
-        query(get_create_account_public_keys_table(&self.network).as_str())
-            .execute(&*self.pool)
-            .await?;
+        query(get_create_account_public_keys_table(&self.network).as_str()).execute(
+            &*self.pool
+        ).await?;
 
-        query(get_create_vote_proposal_table(&self.network).as_str())
-            .execute(&*self.pool)
-            .await?;
+        query(get_create_vote_proposal_table(&self.network).as_str()).execute(&*self.pool).await?;
 
-        query(get_create_delegations_table(&self.network).as_str())
-            .execute(&*self.pool)
-            .await?;
+        query(get_create_delegations_table(&self.network).as_str()).execute(&*self.pool).await?;
 
         Ok(())
     }
@@ -171,7 +161,7 @@ impl Database {
         block_results: &block_results::Response,
         checksums_map: &HashMap<String, String>,
         sqlx_tx: &mut Transaction<'a, sqlx::Postgres>,
-        network: &str,
+        network: &str
     ) -> Result<(), Error> {
         // let mut query_builder: QueryBuilder<_> = QueryBuilder::new(insert_block_query(network));
 
@@ -189,62 +179,26 @@ impl Database {
             .bind(block.header.chain_id.as_str())
             .bind(block.header.height.value() as i32)
             .bind(block.header.time.to_rfc3339())
-            .bind(
-                block
-                    .header
-                    .last_block_id
-                    .map(|id| id.hash.as_bytes().to_vec()),
-            )
-            .bind(
-                block
-                    .header
-                    .last_block_id
-                    .map(|id| id.part_set_header.total as i32),
-            )
-            .bind(
-                block
-                    .header
-                    .last_block_id
-                    .map(|id| id.part_set_header.hash.as_bytes().to_vec()),
-            )
-            .bind(
-                block
-                    .header
-                    .last_commit_hash
-                    .map(|lch| lch.as_bytes().to_vec()),
-            )
+            .bind(block.header.last_block_id.map(|id| id.hash.as_bytes().to_vec()))
+            .bind(block.header.last_block_id.map(|id| id.part_set_header.total as i32))
+            .bind(block.header.last_block_id.map(|id| id.part_set_header.hash.as_bytes().to_vec()))
+            .bind(block.header.last_commit_hash.map(|lch| lch.as_bytes().to_vec()))
             .bind(block.header.data_hash.map(|dh| dh.as_bytes().to_vec()))
             .bind(block.header.validators_hash.as_bytes().to_vec())
             .bind(block.header.next_validators_hash.as_bytes().to_vec())
             .bind(block.header.consensus_hash.as_bytes().to_vec())
             .bind(block.header.app_hash.to_string())
-            .bind(
-                block
-                    .header
-                    .last_results_hash
-                    .map(|lrh| lrh.as_bytes().to_vec()),
-            )
+            .bind(block.header.last_results_hash.map(|lrh| lrh.as_bytes().to_vec()))
             .bind(block.header.evidence_hash.map(|eh| eh.as_bytes().to_vec()))
             .bind(block.header.proposer_address.to_string())
             .bind(block.last_commit.as_ref().map(|c| c.height.value() as i32))
             .bind(block.last_commit.as_ref().map(|c| c.round.value() as i32))
+            .bind(block.last_commit.as_ref().map(|c| c.block_id.hash.as_bytes().to_vec()))
+            .bind(block.last_commit.as_ref().map(|c| c.block_id.part_set_header.total as i32))
             .bind(
-                block
-                    .last_commit
+                block.last_commit
                     .as_ref()
-                    .map(|c| c.block_id.hash.as_bytes().to_vec()),
-            )
-            .bind(
-                block
-                    .last_commit
-                    .as_ref()
-                    .map(|c| c.block_id.part_set_header.total as i32),
-            )
-            .bind(
-                block
-                    .last_commit
-                    .as_ref()
-                    .map(|c| c.block_id.part_set_header.hash.as_bytes().to_vec()),
+                    .map(|c| c.block_id.part_set_header.hash.as_bytes().to_vec())
             );
 
         query.execute(&mut *sqlx_tx).await?;
@@ -253,10 +207,12 @@ impl Database {
 
         // Check if we have commit signatures
         if let Some(cs) = commit_signatures {
-            let signatures: Vec<CommitSig> =
-                cs.iter().map(|s| CommitSig::from(s.to_owned())).collect();
+            let signatures: Vec<CommitSig> = cs
+                .iter()
+                .map(|s| CommitSig::from(s.to_owned()))
+                .collect();
             Self::save_commit_sinatures(block_id, &signatures, sqlx_tx, network).await?;
-        };
+        }
 
         let evidence_list = RawEvidenceList::from(block.evidence().clone());
         Self::save_evidences(evidence_list, block_id, sqlx_tx, network).await?;
@@ -267,9 +223,8 @@ impl Database {
             block_results,
             checksums_map,
             sqlx_tx,
-            network,
-        )
-        .await?;
+            network
+        ).await?;
 
         Ok(())
     }
@@ -280,7 +235,7 @@ impl Database {
         &self,
         block: &Block,
         block_results: &block_results::Response,
-        checksums_map: &HashMap<String, String>,
+        checksums_map: &HashMap<String, String>
     ) -> Result<(), Error> {
         let instant = tokio::time::Instant::now();
         // Lets use postgres transaction internally for 2 reasons:
@@ -297,9 +252,8 @@ impl Database {
             block_results,
             checksums_map,
             &mut sqlx_tx,
-            self.network.as_str(),
-        )
-        .await?;
+            self.network.as_str()
+        ).await?;
 
         let res = sqlx_tx.commit().await.map_err(Error::from);
 
@@ -331,20 +285,19 @@ impl Database {
         block_id: &[u8],
         signatures: &Vec<CommitSig>,
         sqlx_tx: &mut Transaction<'a, sqlx::Postgres>,
-        network: &str,
+        network: &str
     ) -> Result<(), Error> {
         info!("saving commit signatures");
 
-        let mut query_builder: QueryBuilder<_> = QueryBuilder::new(format!(
-            "INSERT INTO {}.commit_signatures(
+        let mut query_builder: QueryBuilder<_> = QueryBuilder::new(
+            format!("INSERT INTO {}.commit_signatures(
                 block_id,
                 block_id_flag,
                 validator_address,
                 timestamp,
                 signature
-            )",
-            network
-        ));
+            )", network)
+        );
 
         let instant = tokio::time::Instant::now();
 
@@ -371,11 +324,7 @@ impl Database {
                 ("num_signatures", num_signatures.to_string()),
             ];
             let dur = instant.elapsed();
-            histogram!(
-                DB_SAVE_COMMIT_SIG_DURATION,
-                dur.as_secs_f64() * 1000.0,
-                &labels
-            );
+            histogram!(DB_SAVE_COMMIT_SIG_DURATION, dur.as_secs_f64() * 1000.0, &labels);
 
             return Ok(());
         }
@@ -389,11 +338,10 @@ impl Database {
                         .push_bind(validator_address)
                         .push_bind(timestamp)
                         .push_bind(signature);
-                },
+                }
             )
             .build()
-            .execute(&mut *sqlx_tx)
-            .await
+            .execute(&mut *sqlx_tx).await
             .map(|_| ())
             .map_err(Error::from);
 
@@ -410,11 +358,7 @@ impl Database {
             ("num_signatures", num_signatures.to_string()),
         ];
 
-        histogram!(
-            DB_SAVE_COMMIT_SIG_DURATION,
-            dur.as_secs_f64() * 1000.0,
-            &labels
-        );
+        histogram!(DB_SAVE_COMMIT_SIG_DURATION, dur.as_secs_f64() * 1000.0, &labels);
 
         res
     }
@@ -429,7 +373,7 @@ impl Database {
         block_results: &block_results::Response,
         checksums_map: &HashMap<String, String>,
         sqlx_tx: &mut Transaction<'a, sqlx::Postgres>,
-        network: &str,
+        network: &str
     ) -> Result<(), Error> {
         Self::save_block_impl(block, block_results, checksums_map, sqlx_tx, network).await
     }
@@ -442,21 +386,20 @@ impl Database {
         evidences: RawEvidenceList,
         block_id: &[u8],
         sqlx_tx: &mut Transaction<'a, sqlx::Postgres>,
-        network: &str,
+        network: &str
     ) -> Result<(), Error> {
         info!("saving evidences");
 
-        let mut query_builder: QueryBuilder<_> = QueryBuilder::new(format!(
-            "INSERT INTO {}.evidences(
+        let mut query_builder: QueryBuilder<_> = QueryBuilder::new(
+            format!("INSERT INTO {}.evidences(
                     block_id,
                     height,
                     time,
                     address,
                     total_voting_power,
                     validator_power
-            )",
-            network
-        ));
+            )", network)
+        );
 
         let instant = tokio::time::Instant::now();
 
@@ -514,11 +457,10 @@ impl Database {
                         .push_bind(address)
                         .push_bind(total_voting_power)
                         .push_bind(validator_power);
-                },
+                }
             )
             .build()
-            .execute(&mut *sqlx_tx)
-            .await
+            .execute(&mut *sqlx_tx).await
             .map(|_| ())
             .map_err(Error::from);
 
@@ -551,7 +493,7 @@ impl Database {
         block_results: &block_results::Response,
         checksums_map: &HashMap<String, String>,
         sqlx_tx: &mut Transaction<'a, sqlx::Postgres>,
-        network: &str,
+        network: &str
     ) -> Result<(), Error> {
         // use for metrics
         let instant = tokio::time::Instant::now();
@@ -560,7 +502,7 @@ impl Database {
             let labels = [
                 ("bulk_insert", "transactions".to_string()),
                 ("status", "Ok".to_string()),
-                ("num_transactions", 0.to_string()),
+                ("num_transactions", (0).to_string()),
             ];
 
             let dur = instant.elapsed();
@@ -571,8 +513,8 @@ impl Database {
 
         info!(message = "Saving transactions");
 
-        let mut query_builder: QueryBuilder<_> = QueryBuilder::new(format!(
-            "INSERT INTO {}.transactions(
+        let mut query_builder: QueryBuilder<_> = QueryBuilder::new(
+            format!("INSERT INTO {}.transactions(
                     hash, 
                     block_id, 
                     tx_type,
@@ -583,9 +525,8 @@ impl Database {
                     code,
                     data,
                     return_code
-                )",
-            network
-        ));
+                )", network)
+        );
 
         // this will holds tuples (hash, block_id, tx_type, fee_amount_per_gas_unit, fee_token, gas_limit_multiplier, code, data)
         // in order to push txs.len at once in a single query.
@@ -618,8 +559,9 @@ impl Database {
                 for event in end_events {
                     for attr in event.attributes.iter() {
                         // We look to confirm hash of transaction
-                        if attr.key == "hash"
-                            && attr.value.to_ascii_lowercase() == hex::encode(&hash_id)
+                        if
+                            attr.key == "hash" &&
+                            attr.value.to_ascii_lowercase() == hex::encode(&hash_id)
                         {
                             // Now we look for the return code
                             for attr in event.attributes.iter() {
@@ -633,9 +575,13 @@ impl Database {
                 }
 
                 // look for wrapper tx to link to
-                let txs = query(&format!("SELECT * FROM {0}.transactions WHERE block_id IN (SELECT block_id FROM {0}.blocks WHERE header_height = {1});", network, block_height-1))
-                    .fetch_all(&mut *sqlx_tx)
-                    .await?;
+                let txs = query(
+                    &format!(
+                        "SELECT * FROM {0}.transactions WHERE block_id IN (SELECT block_id FROM {0}.blocks WHERE header_height = {1});",
+                        network,
+                        block_height - 1
+                    )
+                ).fetch_all(&mut *sqlx_tx).await?;
                 txid_wrapper = txs[i].try_get("hash")?;
                 i += 1;
 
@@ -658,8 +604,8 @@ impl Database {
                     "tx_transfer" => {
                         let transfer = token::Transfer::try_from_slice(&data[..])?;
 
-                        let mut query_builder: QueryBuilder<_> = QueryBuilder::new(format!(
-                            "INSERT INTO {}.tx_transfer(
+                        let mut query_builder: QueryBuilder<_> = QueryBuilder::new(
+                            format!("INSERT INTO {}.tx_transfer(
                                 tx_id,
                                 source, 
                                 target, 
@@ -667,9 +613,8 @@ impl Database {
                                 amount,
                                 key,
                                 shielded
-                            )",
-                            network
-                        ));
+                            )", network)
+                        );
 
                         let query = query_builder
                             .push_values(std::iter::once(0), |mut b, _| {
@@ -687,16 +632,15 @@ impl Database {
                     "tx_bond" => {
                         let bond = Bond::try_from_slice(&data[..])?;
 
-                        let mut query_builder: QueryBuilder<_> = QueryBuilder::new(format!(
-                            "INSERT INTO {}.tx_bond(
+                        let mut query_builder: QueryBuilder<_> = QueryBuilder::new(
+                            format!("INSERT INTO {}.tx_bond(
                                 tx_id,
                                 validator,
                                 amount,
                                 source,
                                 bond
-                            )",
-                            network
-                        ));
+                            )", network)
+                        );
 
                         let query = query_builder
                             .push_values(std::iter::once(0), |mut b, _| {
@@ -712,16 +656,15 @@ impl Database {
                     "tx_unbond" => {
                         let unbond = Unbond::try_from_slice(&data[..])?;
 
-                        let mut query_builder: QueryBuilder<_> = QueryBuilder::new(format!(
-                            "INSERT INTO {}.tx_bond(
+                        let mut query_builder: QueryBuilder<_> = QueryBuilder::new(
+                            format!("INSERT INTO {}.tx_bond(
                                 tx_id,
                                 validator,
                                 amount,
                                 source,
                                 bond
-                            )",
-                            network
-                        ));
+                            )", network)
+                        );
 
                         let query = query_builder
                             .push_values(std::iter::once(0), |mut b, _| {
@@ -729,10 +672,9 @@ impl Database {
                                     .push_bind(unbond.validator.to_string())
                                     .push_bind(unbond.amount.to_string_native())
                                     .push_bind(
-                                        unbond
-                                            .source
+                                        unbond.source
                                             .as_ref()
-                                            .map_or("".to_string(), |s| s.to_string()),
+                                            .map_or("".to_string(), |s| s.to_string())
                                     )
                                     .push_bind(false);
                             })
@@ -744,8 +686,8 @@ impl Database {
                         // Only TransferToEthereum type is supported at the moment by namada and us.
                         let tx_bridge = PendingTransfer::try_from_slice(&data[..])?;
 
-                        let mut query_builder: QueryBuilder<_> = QueryBuilder::new(format!(
-                            "INSERT INTO {}.tx_bridge_pool(
+                        let mut query_builder: QueryBuilder<_> = QueryBuilder::new(
+                            format!("INSERT INTO {}.tx_bridge_pool(
                                 tx_id,
                                 asset,
                                 recipient,
@@ -753,9 +695,8 @@ impl Database {
                                 amount,
                                 gas_amount,
                                 payer
-                            )",
-                            network
-                        ));
+                            )", network)
+                        );
 
                         let query = query_builder
                             .push_values(std::iter::once(0), |mut b, _| {
@@ -771,15 +712,14 @@ impl Database {
                         query.execute(&mut *sqlx_tx).await?;
                     }
                     "tx_vote_proposal" => {
-                        let mut query_builder: QueryBuilder<_> = QueryBuilder::new(format!(
-                            "INSERT INTO {}.vote_proposal(
+                        let mut query_builder: QueryBuilder<_> = QueryBuilder::new(
+                            format!("INSERT INTO {}.vote_proposal(
                                 vote_proposal_id,
                                 vote,
                                 voter,
                                 tx_id
-                            )",
-                            network
-                        ));
+                            )", network)
+                        );
 
                         let tx_data = VoteProposalData::try_from_slice(&data[..])?;
 
@@ -800,13 +740,12 @@ impl Database {
                         // now store delegators
                         // if there are indeed delegator addresses in the list.
                         if !tx_data.delegations.is_empty() {
-                            let mut query_builder: QueryBuilder<_> = QueryBuilder::new(format!(
-                                "INSERT INTO {}.delegations(
+                            let mut query_builder: QueryBuilder<_> = QueryBuilder::new(
+                                format!("INSERT INTO {}.delegations(
                                 vote_proposal_id,
                                 delegator_id
-                            )",
-                                network
-                            ));
+                            )", network)
+                            );
 
                             // Insert each key which would have an update_id associated to it,
                             // allowing querying keys per updates.
@@ -848,31 +787,28 @@ impl Database {
                         // before storing it into database
                         let tx = UpdateAccount::try_from_slice(&data[..])?;
 
-                        let insert_query = format!(
-                            "INSERT INTO {}.account_updates(account_id, vp_code_hash, threshold, tx_id) 
-                                VALUES ($1, $2, $3, $4) RETURNING update_id",
-                            network
-                        );
+                        let insert_query =
+                            format!("INSERT INTO {}.account_updates(account_id, vp_code_hash, threshold, tx_id) 
+                                VALUES ($1, $2, $3, $4) RETURNING update_id", network);
 
-                        let update_id: i32 = sqlx::query_scalar(&insert_query)
+                        let update_id: i32 = sqlx
+                            ::query_scalar(&insert_query)
                             .bind(tx.addr.encode())
                             .bind(tx.vp_code_hash.map(|hash| hash.0))
                             .bind(tx.threshold.map(|t| t as i32))
                             .bind(&hash_id)
-                            .fetch_one(&mut *sqlx_tx)
-                            .await?;
+                            .fetch_one(&mut *sqlx_tx).await?;
 
                         // Insert only valid public_key values, omiting empty ones
                         if !tx.public_keys.is_empty() {
                             trace!("Storing {} public_keys", tx.public_keys.len());
 
-                            let mut query_builder: QueryBuilder<_> = QueryBuilder::new(format!(
-                                "INSERT INTO {}.account_public_keys(
+                            let mut query_builder: QueryBuilder<_> = QueryBuilder::new(
+                                format!("INSERT INTO {}.account_public_keys(
                                 update_id,
                                 public_key
-                            )",
-                                network
-                            ));
+                            )", network)
+                            );
 
                             // Insert each key which would have an update_id associated to it,
                             // allowing querying keys per updates.
@@ -924,19 +860,21 @@ impl Database {
         let res = query_builder
             .push_values(
                 tx_values.into_iter(),
-                |mut b,
-                 (
-                    hash,
-                    block_id,
-                    tx_type,
-                    wrapper_id,
-                    fee_amount_per_gas_unit,
-                    fee_token,
-                    fee_gas_limit_multiplier,
-                    code,
-                    data,
-                    return_code,
-                )| {
+                |
+                    mut b,
+                    (
+                        hash,
+                        block_id,
+                        tx_type,
+                        wrapper_id,
+                        fee_amount_per_gas_unit,
+                        fee_token,
+                        fee_gas_limit_multiplier,
+                        code,
+                        data,
+                        return_code,
+                    )
+                | {
                     b.push_bind(hash)
                         .push_bind(block_id)
                         .push_bind(tx_type)
@@ -947,11 +885,10 @@ impl Database {
                         .push_bind(code)
                         .push_bind(data)
                         .push_bind(return_code);
-                },
+                }
             )
             .build()
-            .execute(&mut *sqlx_tx)
-            .await
+            .execute(&mut *sqlx_tx).await
             .map(|_| ())
             .map_err(Error::from);
 
@@ -981,21 +918,15 @@ impl Database {
                 ALTER TABLE {}.blocks ADD CONSTRAINT pk_block_id PRIMARY KEY (block_id);
             ",
                 self.network
-            )
-            .as_str(),
-        )
-        .execute(&*self.pool)
-        .await?;
+            ).as_str()
+        ).execute(&*self.pool).await?;
 
         query(
             format!(
                 "CREATE UNIQUE INDEX ux_header_height ON {}.blocks (header_height);",
                 self.network
-            )
-            .as_str(),
-        )
-        .execute(&*self.pool)
-        .await?;
+            ).as_str()
+        ).execute(&*self.pool).await?;
 
         // If a failed transaction is resent and successfull we don't have a unique private key in the tx hash...
         // query(
@@ -1008,9 +939,12 @@ impl Database {
         // .execute(&*self.pool)
         // .await?;
 
-        query(format!("ALTER TABLE {0}.transactions ADD CONSTRAINT fk_block_id FOREIGN KEY (block_id) REFERENCES {0}.blocks (block_id);", self.network).as_str())
-            .execute(&*self.pool)
-            .await?;
+        query(
+            format!(
+                "ALTER TABLE {0}.transactions ADD CONSTRAINT fk_block_id FOREIGN KEY (block_id) REFERENCES {0}.blocks (block_id);",
+                self.network
+            ).as_str()
+        ).execute(&*self.pool).await?;
 
         // query(
         //     format!(
@@ -1026,21 +960,15 @@ impl Database {
             format!(
                 "CREATE INDEX x_source_transfer ON {}.tx_transfer (source);",
                 self.network
-            )
-            .as_str(),
-        )
-        .execute(&*self.pool)
-        .await?;
+            ).as_str()
+        ).execute(&*self.pool).await?;
 
         query(
             format!(
                 "CREATE INDEX x_target_transfer ON {}.tx_transfer (target);",
                 self.network
-            )
-            .as_str(),
-        )
-        .execute(&*self.pool)
-        .await?;
+            ).as_str()
+        ).execute(&*self.pool).await?;
 
         // query(
         //     format!(
@@ -1066,41 +994,33 @@ impl Database {
             format!(
                 "CREATE INDEX x_validator_bond ON {}.tx_bond (validator);",
                 self.network
-            )
-            .as_str(),
-        )
-        .execute(&*self.pool)
-        .await?;
+            ).as_str()
+        ).execute(&*self.pool).await?;
 
         query(
-            format!(
-                "CREATE INDEX x_source_bond ON {}.tx_bond (source);",
-                self.network
-            )
-            .as_str(),
-        )
-        .execute(&*self.pool)
-        .await?;
+            format!("CREATE INDEX x_source_bond ON {}.tx_bond (source);", self.network).as_str()
+        ).execute(&*self.pool).await?;
 
         query(
             format!(
                 "ALTER TABLE {}.account_public_keys ADD CONSTRAINT pk_id PRIMARY KEY (id);",
                 self.network
-            )
-            .as_str(),
-        )
-        .execute(&*self.pool)
-        .await?;
+            ).as_str()
+        ).execute(&*self.pool).await?;
 
         query(
             format!(
                 "ALTER TABLE {}.delegations ADD CONSTRAINT del_id PRIMARY KEY (id);",
                 self.network
-            )
-            .as_str(),
-        )
-        .execute(&*self.pool)
-        .await?;
+            ).as_str()
+        ).execute(&*self.pool).await?;
+
+        query(
+            format!(
+                "CREATE INDEX x_validator_address ON {}.commit_signatures (validator_address);",
+                self.network
+            ).as_str()
+        ).execute(&*self.pool).await?;
 
         Ok(())
     }
@@ -1108,15 +1028,8 @@ impl Database {
     #[instrument(skip(self, block_id))]
     pub async fn block_by_id(&self, block_id: &[u8]) -> Result<Option<Row>, Error> {
         // query for the block if it exists
-        let str = format!(
-            "SELECT * FROM {}.{BLOCKS_TABLE_NAME} WHERE block_id=$1",
-            self.network
-        );
-        query(&str)
-            .bind(block_id)
-            .fetch_optional(&*self.pool)
-            .await
-            .map_err(Error::from)
+        let str = format!("SELECT * FROM {}.{BLOCKS_TABLE_NAME} WHERE block_id=$1", self.network);
+        query(&str).bind(block_id).fetch_optional(&*self.pool).await.map_err(Error::from)
     }
 
     /// Returns the block at `block_height` if present, otherwise returns an Error.
@@ -1127,22 +1040,43 @@ impl Database {
             self.network
         );
 
-        query(&str)
-            .fetch_optional(&*self.pool)
-            .await
-            .map_err(Error::from)
+        query(&str).fetch_optional(&*self.pool).await.map_err(Error::from)
     }
 
     #[instrument(skip(self))]
     /// Returns the latest block, otherwise returns an Error.
     pub async fn get_last_block(&self) -> Result<Row, Error> {
-        let str = format!("SELECT * FROM {0}.{BLOCKS_TABLE_NAME} WHERE header_height = (SELECT MAX(header_height) FROM {0}.{BLOCKS_TABLE_NAME})", self.network);
+        let str = format!(
+            "SELECT * FROM {0}.{BLOCKS_TABLE_NAME} WHERE header_height = (SELECT MAX(header_height) FROM {0}.{BLOCKS_TABLE_NAME})",
+            self.network
+        );
 
         // use query_one as the row matching max height is unique.
-        query(&str)
-            .fetch_one(&*self.pool)
-            .await
-            .map_err(Error::from)
+        query(&str).fetch_one(&*self.pool).await.map_err(Error::from)
+    }
+
+    pub async fn get_blocks(&self, page: i32, page_size: i32) -> Result<Vec<Row>, Error> {
+        // Calculate the offset for the SQL query
+        let offset = (page - 1) * page_size;
+
+        // Create the SQL query
+        let query = format!(
+            "SELECT * FROM {0}.{BLOCKS_TABLE_NAME} ORDER BY header_height DESC LIMIT {1} OFFSET {2}",
+            self.network,
+            page_size,
+            offset
+        );
+
+        // Execute the query and collect the results into a vector
+        let rows = sqlx::query(&query).fetch_all(&*self.pool).await?;
+
+        Ok(rows)
+    }
+
+    pub async fn get_total_block(&self) -> Result<i64, sqlx::Error> {
+        let query = format!("SELECT COUNT(*) FROM {0}.{BLOCKS_TABLE_NAME}", self.network);
+        let total: (i64,) = sqlx::query_as(&query).fetch_one(&*self.pool).await?; // Dereference self.pool before passing it to fetch_one
+        Ok(total.0)
     }
 
     #[instrument(skip(self))]
@@ -1154,39 +1088,52 @@ impl Database {
         );
 
         // use query_one as the row matching max height is unique.
-        query(&str)
-            .fetch_one(&*self.pool)
-            .await
-            .map_err(Error::from)
+        query(&str).fetch_one(&*self.pool).await.map_err(Error::from)
     }
 
     #[instrument(skip(self))]
     /// Returns Transaction identified by hash
     pub async fn get_tx(&self, hash: &[u8]) -> Result<Option<Row>, Error> {
         // query for transaction with hash
-        let str = format!(
-            "SELECT * FROM {}.{TX_TABLE_NAME} WHERE hash=$1",
-            self.network
+        let str = format!("SELECT * FROM {}.{TX_TABLE_NAME} WHERE hash=$1", self.network);
+
+        query(&str).bind(hash).fetch_optional(&*self.pool).await.map_err(Error::from)
+    }
+
+    pub async fn get_txs(&self, page: i32, page_size: i32) -> Result<Vec<Row>, Error> {
+        // Calculate the offset for the SQL query
+        let offset = (page - 1) * page_size;
+
+        // Create the SQL query
+        let query = format!(
+            "SELECT * FROM {}.{TX_TABLE_NAME} ORDER BY created_at DESC LIMIT {1} OFFSET {2}",
+            self.network,
+            page_size,
+            offset
         );
 
-        query(&str)
-            .bind(hash)
-            .fetch_optional(&*self.pool)
-            .await
-            .map_err(Error::from)
+        // Execute the query and collect the results into a vector
+        let rows = sqlx::query(&query).fetch_all(&*self.pool).await?;
+
+        Ok(rows)
+    }
+
+    pub async fn get_total_txs(&self) -> Result<i64, sqlx::Error> {
+        let query = format!("SELECT COUNT(*) FROM {0}.{TX_TABLE_NAME}", self.network);
+        let total: (i64,) = sqlx::query_as(&query).fetch_one(&*self.pool).await?; // Dereference self.pool before passing it to fetch_one
+        Ok(total.0)
     }
 
     #[instrument(skip(self))]
     /// Returns all the tx hashes for a block
     pub async fn get_tx_hashes_block(&self, hash: &[u8]) -> Result<Vec<Row>, Error> {
         // query for all tx hash that are in a block identified by the block_id
-        let str = format!("SELECT t.hash, t.tx_type FROM {0}.{BLOCKS_TABLE_NAME} b JOIN {0}.{TX_TABLE_NAME} t ON b.block_id = t.block_id WHERE b.block_id = $1;", self.network);
+        let str = format!(
+            "SELECT t.hash, t.tx_type FROM {0}.{BLOCKS_TABLE_NAME} b JOIN {0}.{TX_TABLE_NAME} t ON b.block_id = t.block_id WHERE b.block_id = $1;",
+            self.network
+        );
 
-        query(&str)
-            .bind(hash)
-            .fetch_all(&*self.pool)
-            .await
-            .map_err(Error::from)
+        query(&str).bind(hash).fetch_all(&*self.pool).await.map_err(Error::from)
     }
 
     #[instrument(skip(self))]
@@ -1198,10 +1145,7 @@ impl Database {
             self.network
         );
 
-        query(&str)
-            .fetch_all(&*self.pool)
-            .await
-            .map_err(Error::from)
+        query(&str).fetch_all(&*self.pool).await.map_err(Error::from)
     }
 
     #[instrument(skip(self))]
@@ -1211,10 +1155,7 @@ impl Database {
             "SELECT indexname, indexdef FROM pg_indexes WHERE tablename = '{BLOCKS_TABLE_NAME}';"
         );
 
-        query(&str)
-            .fetch_all(&*self.pool)
-            .await
-            .map_err(Error::from)
+        query(&str).fetch_all(&*self.pool).await.map_err(Error::from)
     }
 
     /// Retrieves a historical list of thresholds associated with a given account.
@@ -1259,11 +1200,7 @@ impl Database {
             self.network
         );
 
-        query(&to_query)
-            .bind(account_id)
-            .fetch_optional(&*self.pool)
-            .await
-            .map_err(Error::from)
+        query(&to_query).bind(account_id).fetch_optional(&*self.pool).await.map_err(Error::from)
     }
 
     /// Retrieves a historical list of vp_code_hashes associated with a given account.
@@ -1304,11 +1241,7 @@ impl Database {
             self.network
         );
 
-        query(&to_query)
-            .bind(account_id)
-            .fetch_optional(&*self.pool)
-            .await
-            .map_err(Error::from)
+        query(&to_query).bind(account_id).fetch_optional(&*self.pool).await.map_err(Error::from)
     }
 
     /// Retrieves a historical list of public key sets associated with a given account.
@@ -1352,16 +1285,13 @@ impl Database {
             GROUP BY update_id
             ORDER BY update_id ASC;
         ",
-            self.network, self.network
+            self.network,
+            self.network
         );
 
         // Each returned row would contain a vector of public keys formatted as strings.
         // The column's name is publick_key_batch.
-        query(&to_query)
-            .bind(account_id)
-            .fetch_all(&*self.pool)
-            .await
-            .map_err(Error::from)
+        query(&to_query).bind(account_id).fetch_all(&*self.pool).await.map_err(Error::from)
     }
 
     pub async fn vote_proposal_data(&self, proposal_id: u64) -> Result<Option<Row>, Error> {
@@ -1373,8 +1303,7 @@ impl Database {
         // Execute the query and fetch the first row (if any)
         sqlx::query(&query)
             .bind(proposal_id.to_be_bytes())
-            .fetch_optional(&*self.pool)
-            .await
+            .fetch_optional(&*self.pool).await
             .map_err(Error::from)
     }
 
@@ -1386,11 +1315,7 @@ impl Database {
             self.network
         );
 
-        query(&q)
-            .bind(proposal_id.to_be_bytes())
-            .fetch_all(&*self.pool)
-            .await
-            .map_err(Error::from)
+        query(&q).bind(proposal_id.to_be_bytes()).fetch_all(&*self.pool).await.map_err(Error::from)
     }
 
     // Return the number of commits signed by the `validator_address` in a range of 500 blocks.
@@ -1399,7 +1324,7 @@ impl Database {
         &self,
         validator_address: &[u8],
         start: Option<&i32>,
-        end: Option<&i32>,
+        end: Option<&i32>
     ) -> Result<Row, Error> {
         // if no parameters defined we return result on the last 500 blocks
         let mut q = format!(
@@ -1408,7 +1333,7 @@ impl Database {
                 WHERE validator_address = $1
                 AND block_id IN
                     (SELECT block_id FROM {0}.blocks WHERE header_height BETWEEN (SELECT MAX(header_height) FROM {0}.blocks) - 499 AND (SELECT MAX(header_height) FROM {0}.blocks))",
-            self.network,
+            self.network
         );
 
         if start.is_some() && end.is_some() {
@@ -1418,7 +1343,7 @@ impl Database {
                     WHERE validator_address = $1
                     AND block_id IN
                         (SELECT block_id FROM {0}.blocks WHERE header_height BETWEEN ($2 + 1) AND $3)",
-                self.network,
+                self.network
             );
         }
 
@@ -1426,9 +1351,26 @@ impl Database {
             .bind(validator_address)
             .bind(start)
             .bind(end)
-            .fetch_one(&*self.pool)
-            .await
+            .fetch_one(&*self.pool).await
             .map_err(Error::from)
+    }
+
+    pub async fn count_commit_signatures_by_validator(&self, validator_address: &[u8]) -> Result<i64, Error> {
+        let q = format!(
+            "SELECT COUNT(*)
+                FROM {0}.commit_signatures
+                WHERE validator_address = $1",
+            self.network
+        );
+    
+        let row: Row = sqlx::query(&q)
+            .bind(validator_address)
+            .fetch_one(&*self.pool).await
+            .map_err(Error::from)?;
+    
+        let count: i64 = row.get(0);
+    
+        Ok(count)
     }
 
     #[instrument(skip(self))]
