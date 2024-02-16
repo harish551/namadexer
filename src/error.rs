@@ -20,15 +20,24 @@ pub enum Error {
     InvalidBlockData,
     #[error("Invalid Transaction data")]
     InvalidTxData,
-    #[error("Tendermint error: {0}")] TendermintError(#[from] TError),
-    #[error("Tendermint rpc_error: {0}")] TendermintRpcError(#[from] TRpcError),
-    #[error("Configuration error: {0}")] Config(#[from] ConfigError),
-    #[error("Configuration error: {0}")] IO(#[from] std::io::Error),
-    #[error("Address parsing error: {0}")] AddrError(#[from] std::net::AddrParseError),
-    #[error("Server error: {0}")] ServerError(#[from] axum::Error),
-    #[error("Hex error: {0}")] HexError(#[from] hex::FromHexError),
-    #[error("Database error: {0}")] DB(#[from] sqlx::Error),
-    #[error("std::env error: {0}")] EnvError(#[from] std::env::VarError),
+    #[error("Tendermint error: {0}")]
+    TendermintError(#[from] TError),
+    #[error("Tendermint rpc_error: {0}")]
+    TendermintRpcError(#[from] TRpcError),
+    #[error("Configuration file error: {0}")]
+    Config(#[from] ConfigError),
+    #[error("Configuration error: {0}")]
+    IO(#[from] std::io::Error),
+    #[error("Address parsing error: {0}")]
+    AddrError(#[from] std::net::AddrParseError),
+    #[error("Server error: {0}")]
+    ServerError(#[from] axum::Error),
+    #[error("Hex error: {0}")]
+    HexError(#[from] hex::FromHexError),
+    #[error("Database error: {0}")]
+    DB(#[from] sqlx::Error),
+    #[error("std::env error: {0}")]
+    EnvError(#[from] std::env::VarError),
     #[error("Tokio channel SendError")]
     SendError,
     #[error("tokio_error: {0}")] JoinError(#[from] JoinError),
