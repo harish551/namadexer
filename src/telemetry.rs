@@ -3,7 +3,7 @@ use tracing_subscriber::Layer;
 
 use tracing_subscriber::{ filter::filter_fn, layer::SubscriberExt, EnvFilter, Registry };
 
-use crate::{ JaegerConfig, Settings };
+use crate::{JaegerConfig, LogFormat, Settings};
 use opentelemetry_api::global;
 
 /// Setup looging this includes a fmt::layer and jaeger(if enable)
@@ -26,8 +26,11 @@ pub fn get_subscriber(cfg: &Settings) -> impl Subscriber + Send + Sync {
         EnvFilter::new(&cfg.log_level)
     );
 
-    // send any logs to stdout
-    let std_out = tracing_subscriber::fmt::layer().pretty();
+    // send logs to stdout in the configured format
+    let (json, pretty) = match cfg.log_format {
+        LogFormat::Json => (Some(tracing_subscriber::fmt::layer().json()), None),
+        LogFormat::Pretty => (None, Some(tracing_subscriber::fmt::layer().pretty())),
+    };
 
     // check if jaeger telemetry is enable and configure it accordingly
     let jaeger_cfg = cfg.jaeger_config();
@@ -36,7 +39,11 @@ pub fn get_subscriber(cfg: &Settings) -> impl Subscriber + Send + Sync {
         jaeger = Some(jaeger_layer(jaeger_cfg));
     }
 
-    Registry::default().with(env_filter).with(std_out).with(jaeger)
+    Registry::default()
+        .with(env_filter)
+        .with(json)
+        .with(pretty)
+        .with(jaeger)
 }
 
 /// Sets the passed in `subscriber` as the global one.
