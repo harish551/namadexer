@@ -108,8 +108,6 @@ pub struct TxInfo {
     return_code: Option<i32>, // New field for return_code
     /// Inner transaction type
     tx: Option<TxDecoded>,
-
-    return_code: Option<i32>
 }
 
 impl TxInfo {
