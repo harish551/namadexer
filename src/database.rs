@@ -549,8 +549,10 @@ impl Database {
                     fee_amount_per_gas_unit,
                     fee_token,
                     gas_limit_multiplier,
+                    code_type,
                     code,
                     data,
+                    memo,
                     return_code
                 )", network)
         );
@@ -1301,7 +1303,7 @@ impl Database {
             .await
             .map_err(Error::from)
     }
-    
+
     #[instrument(skip(self, block_id))]
     pub async fn block_by_id(&self, block_id: &[u8]) -> Result<Option<Row>, Error> {
         // query for the block if it exists
