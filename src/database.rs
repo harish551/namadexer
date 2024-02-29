@@ -1,10 +1,13 @@
 use crate::queries::insert_block_query;
 use crate::{ config::DatabaseConfig, error::Error, utils };
+use std::collections::BTreeMap;
 
+use namada_sdk::governance::storage::proposal::StorageProposal;
 use namada_sdk::types::key::common::PublicKey;
 use namada_sdk::{
     account::{ InitAccount, UpdateAccount },
     borsh::BorshDeserialize,
+    governance::InitProposalData,
     governance::VoteProposalData,
     tendermint_proto::types::EvidenceList as RawEvidenceList,
     tx::{ data::{ pgf::UpdateStewardCommission, pos::{ Bond, Unbond }, TxType }, Tx },
@@ -41,10 +44,13 @@ use crate::tables::{
     get_create_block_table_query,
     get_create_commit_signatures_table_query,
     get_create_delegations_table,
-    get_create_evidences_table_query,
+     et_create_evidences_table_query,
+    get_create_proposals_table,
     get_create_transactions_table_query,
+    get_create_transactions_view_query,
     get_create_tx_bond_table_query,
     get_create_tx_bridge_pool_table_query,
+    get_create_tx_init_proposal_table,
     get_create_tx_transfer_table_query,
     get_create_vote_proposal_table,
 };
@@ -53,6 +59,7 @@ use metrics::{ histogram, increment_counter };
 
 const BLOCKS_TABLE_NAME: &str = "blocks";
 const TX_TABLE_NAME: &str = "transactions";
+const TX_VIEW_NAME: &str = "tx_details";
 
 // Max time to wait for a succesfull database connection
 const DATABASE_TIMEOUT: u64 = 60;
@@ -156,6 +163,19 @@ impl Database {
         query(get_create_vote_proposal_table(&self.network).as_str()).execute(&*self.pool).await?;
 
         query(get_create_delegations_table(&self.network).as_str()).execute(&*self.pool).await?;
+
+        query(get_create_proposals_table(&self.network).as_str())
+            .execute(&*self.pool)
+            .await?;
+
+        query(get_create_tx_init_proposal_table(&self.network).as_str())
+            .execute(&*self.pool)
+            .await?;
+
+        // Views
+        query(get_create_transactions_view_query(&self.network).as_str())
+            .execute(&*self.pool)
+            .await?;
 
         Ok(())
     }

@@ -39,8 +39,10 @@ pub fn get_create_transactions_table_query(network: &str) -> String {
         fee_amount_per_gas_unit TEXT,
         fee_token TEXT,
         gas_limit_multiplier BIGINT,
+        code_type TEXT,
         code BYTEA,
         data BYTEA,
+        memo BYTEA,
         return_code INTEGER,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     );",
@@ -207,5 +209,63 @@ pub fn get_create_delegations_table(network: &str) -> String {
         delegator_id TEXT NOT NULL
     );",
         network
+    )
+}
+
+// store proposals in specific table
+pub fn get_create_proposals_table(network: &str) -> String {
+    format!(
+        "CREATE TABLE IF NOT EXISTS {}.proposals (
+        id INTEGER PRIMARY KEY,
+        type TEXT NOT NULL,
+        author TEXT NOT NULL,
+        content JSON,
+        voting_start_epoch INTEGER,
+        voting_end_epoch INTEGER,
+        grace_epoch INTEGER
+    );",
+        network
+    )
+}
+
+// store proposals in specific table
+pub fn get_create_tx_init_proposal_table(network: &str) -> String {
+    format!(
+        "CREATE TABLE IF NOT EXISTS {}.tx_init_proposal (
+        tx_id BYTEA NOT NULL,
+        custom_id INTEGER,
+        type TEXT NOT NULL,
+        author TEXT NOT NULL,
+        voting_start_epoch INTEGER,
+        voting_end_epoch INTEGER,
+        grace_epoch INTEGER
+    );",
+        network
+    )
+}
+
+// views
+pub fn get_create_transactions_view_query(network: &str) -> String {
+    format!(
+        "CREATE OR REPLACE VIEW {}.tx_details as (
+            SELECT 
+                b.header_height, 
+                b.header_time, 
+                encode(t.hash, 'hex') as tx_hash, 
+                encode(t.block_id, 'hex') as block_hash, 
+                encode(t.wrapper_id, 'hex') as wrapper_hash, 
+                t.tx_type, 
+                t.fee_amount_per_gas_unit, 
+                t.fee_token, 
+                t.gas_limit_multiplier, 
+                t.code_type, 
+                t.code,
+                t.data, 
+                encode(t.memo, 'escape') as memo, 
+                t.return_code 
+            FROM {}.transactions t
+                LEFT JOIN {}.blocks b on b.block_id = t.block_id
+            ORDER BY b.header_height DESC);",
+        network, network, network
     )
 }

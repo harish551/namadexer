@@ -1,8 +1,9 @@
 use axum::{ extract::{ Path, State, Query }, Json };
 use tracing::info;
 
+use serde::{Deserialize, Serialize};
 use crate::{
-    server::{ shielded, tx::{ VoteProposalTx, Response, Paging }, ServerState, TxInfo },
+    server::{ shielded, tx::{ VoteProposalTx, Response, Paging }, ServerState, TxDetails, TxInfo },
     Error,
 };
 use sqlx::Row as TRow;
@@ -81,4 +82,82 @@ pub async fn get_txs(
     let total = state.db.get_total_txs().await?;
 
     Ok(Json(Response { data: txs, total }))
+}
+
+#[derive(Deserialize)]
+pub struct PaginationQuery {
+    page: Option<u32>,
+    limit: Option<u32>,
+    include_wrapper: Option<bool>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct PaginatedResponse {
+    data: Vec<TxDetails>,
+    pagination: PaginationMetadata,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct PaginationMetadata {
+    total_records: u32,
+    current_page: u32,
+    total_pages: u32,
+    next_page: Option<u32>,
+    prev_page: Option<u32>,
+}
+
+pub async fn get_tx_by_memo(
+    State(state): State<ServerState>,
+    Path(memo): Path<String>,
+    Query(pagination): Query<PaginationQuery>,
+) -> Result<Json<PaginatedResponse>, Error> {
+    info!("calling /tx_by_memo/:memo{}", memo);
+
+    let page = pagination.page.unwrap_or(1);
+    let limit = pagination.limit.unwrap_or(50);
+    let include_wrapper: bool = pagination.include_wrapper.unwrap_or(false);
+
+    let offset = (page - 1) * limit;
+
+    let total_records = state
+        .db
+        .get_total_tx_count_by_memo(memo.clone(), !include_wrapper)
+        .await?;
+    let tx_counter: i64 = total_records.try_get("counter").unwrap_or(0);
+
+    let rows = state
+        .db
+        .get_tx_memo(memo, limit, offset, !include_wrapper)
+        .await?;
+
+    let mut infos: Vec<TxDetails> = Vec::new();
+
+    for row in rows {
+        let mut tx = TxDetails::try_from(row)?;
+
+        // ignore the error for now
+        _ = tx.decode_tx(&state.checksums_map);
+
+        infos.push(tx);
+    }
+
+    // Calculate pagination metadata
+    let total_pages = (tx_counter as f64 / limit as f64).ceil() as u32;
+    let next_page = if page < total_pages {
+        Some(page + 1)
+    } else {
+        None
+    };
+    let prev_page = if page > 1 { Some(page - 1) } else { None };
+
+    Ok(Json(PaginatedResponse {
+        data: infos,
+        pagination: PaginationMetadata {
+            total_records: tx_counter as u32,
+            current_page: page,
+            total_pages,
+            next_page,
+            prev_page,
+        },
+    }))
 }

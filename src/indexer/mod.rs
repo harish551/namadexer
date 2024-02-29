@@ -1,6 +1,10 @@
 use futures::stream::StreamExt;
 use futures_util::pin_mut;
 use futures_util::Stream;
+
+use namada_sdk::governance::storage::keys as governance_storage;
+use namada_sdk::rpc;
+
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -243,6 +247,11 @@ pub async fn start_indexing(
         }
 
         current_height += 1;
+
+            // We query proposal every 1000 blocks
+        if current_height % 100 == 0 {
+            index_proposals(&config, db.clone()).await?;
+        }
     }
 
     // propagate any error from the block producer
@@ -281,4 +290,34 @@ fn spawn_block_producer(
     });
 
     (rx, handler)
+}
+
+async fn index_proposals(config: &IndexerConfig, db: Database) -> Result<(), Error> {
+    let client = HttpClient::new(config.tendermint_addr.as_str())?;
+
+    // Get last indexed proposal
+    let internal_counter: u64 = utils::get_proposal_counter(&db).await?;
+
+    // Get chain counter
+    let gov_key = governance_storage::get_counter_key();
+    let chain_counter: u64 = rpc::query_storage_value(&client, &gov_key).await.unwrap();
+
+    println!(
+        "internal counter: {}, chain_counter: {}",
+        internal_counter, chain_counter
+    );
+
+    // we are iterating from current counter to chain counter -1 (id start from 0)
+    if internal_counter < chain_counter {
+        for id in internal_counter..chain_counter - 1 {
+            // Query prop from rpc
+            let storage_prop = rpc::query_proposal_by_id(&client, id as u64).await.unwrap();
+
+            if let Some(storage_prop) = storage_prop {
+                db.save_proposal(storage_prop).await?;
+            }
+        }
+    }
+
+    Ok(())
 }

@@ -14,9 +14,13 @@ use crate::error::Error;
 use crate::utils::load_checksums;
 
 pub mod blocks;
+pub mod proposal_details;
 pub mod tx;
+pub mod tx_details;
 pub use blocks::BlockInfo;
 pub use tx::TxInfo;
+pub use proposal_details::ProposalDetails;
+pub use tx_details::TxDetails;
 pub mod account;
 mod endpoints;
 pub mod shielded;
@@ -27,6 +31,8 @@ use self::endpoints::{
     account::get_account_updates,
     block::{get_block_by_hash, get_block_by_height, get_last_block, get_blocks},
     transaction::{get_shielded_tx, get_tx_by_hash, get_vote_proposal, get_txs},
+    proposal::{get_missing_votes, get_proposal, get_proposals},
+    stats::get_stats,
     validator::{get_validator_uptime,get_commit_signature}
 };
 
@@ -44,10 +50,11 @@ fn server_routes(state: ServerState) -> Router<()> {
     Router::new()
         .route("/block/height/:block_height", get(get_block_by_height))
         .route("/block/hash/:block_hash", get(get_block_by_hash))
-        .route("/block", get(get_blocks))
+        .route("/blocks", get(get_blocks))
         .route("/block/last", get(get_last_block))
-        .route("/tx", get(get_txs))
+        .route("/txs", get(get_txs))
         .route("/tx/:tx_hash", get(get_tx_by_hash))
+        .route("/tx_by_memo/:memo", get(get_tx_by_memo))
         .route("/tx/vote_proposal/:proposal_id", get(get_vote_proposal))
         .route("/tx/shielded", get(get_shielded_tx))
         .route("/account/updates/:account_id", get(get_account_updates))
@@ -59,6 +66,10 @@ fn server_routes(state: ServerState) -> Router<()> {
             "/validator/:validator_address/commit_signatures",
             get(get_commit_signature),
         )
+        .route("/stats", get(get_stats))
+        .route("/proposals", get(get_proposals))
+        .route("/proposal/:id", get(get_proposal))
+        .route("/missing_votes/:address/:epoch", get(get_missing_votes)
         .with_state(state)
 }
 

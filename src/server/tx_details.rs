@@ -1,24 +1,24 @@
 use crate::error::Error;
-use crate::BlockInfo;
 use namada_sdk::ibc::apps::transfer::types::msgs::transfer::MsgTransfer;
 use namada_sdk::tx::data::pos::BecomeValidator;
 use namada_sdk::types::key::common::PublicKey;
 use namada_sdk::{
-    account::{ InitAccount, UpdateAccount },
+    account::{InitAccount, UpdateAccount},
     borsh::BorshDeserialize,
-    governance::{InitProposalData, VoteProposalData},
+    governance::InitProposalData,
+    governance::VoteProposalData,
     tx::data::{
         pgf::UpdateStewardCommission,
-        pos::{Bond, CommissionChange, ConsensusKeyChange, MetaDataChange, Unbond, Withdraw},
+        pos::{Bond, Unbond, Withdraw},
     },
     types::token,
-    types::{ address::Address, eth_bridge_pool::PendingTransfer },
+    types::{address::Address, eth_bridge_pool::PendingTransfer},
 };
 
 use namada_sdk::ibc::primitives::proto::Any;
 use prost::Message;
 
-use serde::{ Deserialize, Serialize };
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tracing::info;
 
@@ -27,97 +27,44 @@ use super::utils::serialize_optional_hex;
 use sqlx::postgres::PgRow as Row;
 use sqlx::Row as TRow;
 
-#[derive(Debug, Deserialize)]
-pub struct Paging {
-    pub page: i32,
-    pub page_size: i32,
-}
-
-#[derive(Serialize)]
-pub struct Response {
-    pub data: Vec<TxInfo>,
-    pub total: i64,
-}
+use crate::server::tx::{IbcTx, TxDecoded};
+use tendermint::block::Height;
+use tendermint::Time;
 
 // namada::ibc::applications::transfer::msgs::transfer::TYPE_URL has been made private and can't be access anymore
 const MSG_TRANSFER_TYPE_URL: &str = "/ibc.applications.transfer.v1.MsgTransfer";
 
-/// Transaction types
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
-pub enum TxDecoded {
-    Transfer(token::Transfer),
-    Bond(Bond),
-    RevealPK(PublicKey),
-    VoteProposal(VoteProposalData),
-    InitValidator(Box<BecomeValidator>),
-    Unbond(Unbond),
-    Withdraw(Withdraw),
-    InitAccount(InitAccount),
-    UpdateAccount(UpdateAccount),
-    ResignSteward(Address),
-    UpdateStewardCommission(UpdateStewardCommission),
-    EthPoolBridge(PendingTransfer),
-    Ibc(IbcTx),
-    InitProposal(InitProposalData),
-    BecomeValidator(Box<BecomeValidator>),
-    ConsensusKeyChange(ConsensusKeyChange),
-    CommissionChange(CommissionChange),
-    MetaDataChange(MetaDataChange),
-    ClaimRewards(Withdraw),
-    DeactivateValidator(Address),
-    InitProposal(InitProposalData),
-    ReactivateValidator(Address),
-    UnjailValidator(Address),
-}
-
-// we have a variant for MsgTransfer, but there are other message types
-// defined in https://github.com/cosmos/ibc-rs/blob/main/crates/ibc/src/core/msgs.rs
-// however none of them implement serde traits, so lets use Any as the general
-// abstraction for it. Any is serializeable
-/// Defines the support IBC transactions.
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
-pub enum IbcTx {
-    // we do not use MsgTransfer directly as it does not
-    // implements serde traits.
-    MsgTransfer(Any),
-    Any(Any),
-}
-
 /// The relevant information regarding transactions and their types.
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
-pub struct TxInfo {
-    /// The hash that idenfities this transaction
-    #[serde(with = "hex::serde")]
-    hash: Vec<u8>,
+pub struct TxDetails {
+    /// The block height of this transaction
+    header_height: Height,
     /// The block this transaction belongs to.
-    #[serde(with = "hex::serde")]
-    block_id: Vec<u8>,
+    header_time: Time,
     /// The transaction type encoded as a string
+    tx_hash: String,
+    block_hash: String,
+    wrapper_hash: String,
     tx_type: String,
-    /// id for the wrapper tx if the tx is decrypted. otherwise it is null.
-    #[serde(with = "hex::serde")]
-    wrapper_id: Vec<u8>,
-    /// The transaction fee only for tx_type Wrapper (otherwise empty)
     fee_amount_per_gas_unit: Option<String>,
     fee_token: Option<String>,
     /// Gas limit (only for Wrapper tx)
     gas_limit_multiplier: Option<i64>,
     code_type: Option<String>,
+
     /// The transaction code. Match what is in the checksum.js
     #[serde(serialize_with = "serialize_optional_hex")]
     code: Option<Vec<u8>>,
     #[serde(serialize_with = "serialize_optional_hex")]
     data: Option<Vec<u8>>,
-    #[serde(serialize_with = "serialize_optional_hex")]
-    memo: Option<Vec<u8>>,
-    return_code: Option<i32>, // New field for return_code
+    memo: String,
     /// Inner transaction type
     tx: Option<TxDecoded>,
-     /// Inner block info
-    block: Option<BlockInfo>,
+
+    return_code: Option<i32>,
 }
 
-impl TxInfo {
+impl TxDetails {
     pub fn is_decrypted(&self) -> bool {
         if self.tx_type == "Decrypted" {
             return true;
@@ -155,8 +102,11 @@ impl TxInfo {
                 "tx_vote_proposal" => {
                     VoteProposalData::try_from_slice(&self.data()).map(TxDecoded::VoteProposal)?
                 }
+                "tx_init_proposal" => {
+                    InitProposalData::try_from_slice(&self.data()).map(TxDecoded::InitProposal)?
+                }
                 "tx_init_validator" => BecomeValidator::try_from_slice(&self.data())
-                    .map(|t| TxDecoded::InitValidator(Box::new(t)))?,
+                    .map(|t| TxDecoded::BecomeValidator(Box::new(t)))?,
                 "tx_unbond" => Unbond::try_from_slice(&self.data()).map(TxDecoded::Unbond)?,
                 "tx_withdraw" => Withdraw::try_from_slice(&self.data()).map(TxDecoded::Withdraw)?,
                 "tx_init_account" => {
@@ -172,39 +122,13 @@ impl TxInfo {
                 }
                 "tx_update_steward_commission" => {
                     // we could need to give users more context about this update.
-                    UpdateStewardCommission::try_from_slice(&self.data()).map(
-                        TxDecoded::UpdateStewardCommission
-                    )?
+                    UpdateStewardCommission::try_from_slice(&self.data())
+                        .map(TxDecoded::UpdateStewardCommission)?
                 }
                 "tx_ibc" => Self::decode_ibc(&self.data()).map(TxDecoded::Ibc)?,
                 "tx_bridge_pool" => {
                     PendingTransfer::try_from_slice(&self.data()).map(TxDecoded::EthPoolBridge)?
                 }
-                "tx_become_validator" => BecomeValidator::try_from_slice(&self.data())
-                    .map(|t| TxDecoded::InitValidator(Box::new(t)))?,
-                "tx_change_consensus_key" => ConsensusKeyChange::try_from_slice(&self.data())
-                    .map(TxDecoded::ConsensusKeyChange)?,
-                "tx_change_validator_commission" => CommissionChange::try_from_slice(&self.data())
-                    .map(TxDecoded::CommissionChange)?,
-                "tx_change_validator_metadata" => {
-                    MetaDataChange::try_from_slice(&self.data()).map(TxDecoded::MetaDataChange)?
-                }
-                "tx_claim_rewards" => {
-                    Withdraw::try_from_slice(&self.data()).map(TxDecoded::ClaimRewards)?
-                }
-                "tx_deactivate_validator" => {
-                    Address::try_from_slice(&self.data()).map(TxDecoded::DeactivateValidator)?
-                }
-                "tx_init_proposal" => {
-                    InitProposalData::try_from_slice(&self.data()).map(TxDecoded::InitProposal)?
-                }
-                "tx_reactivate_validator" => {
-                    Address::try_from_slice(&self.data()).map(TxDecoded::ReactivateValidator)?
-                }
-                "tx_unjail_validator" => {
-                    Address::try_from_slice(&self.data()).map(TxDecoded::UnjailValidator)?
-                }
-
                 _ => {
                     return Err(Error::InvalidTxData(format!(
                         "unsupported type_tx {}",
@@ -219,7 +143,6 @@ impl TxInfo {
         }
         Err(Error::InvalidTxData("tx is not decrypted".into()))
     }
-
     fn decode_ibc(tx_data: &[u8]) -> Result<IbcTx, Error> {
         let msg = Any::decode(tx_data).map_err(|e| Error::InvalidTxData(e.to_string()))?;
         if msg.type_url.as_str() == MSG_TRANSFER_TYPE_URL
@@ -231,31 +154,40 @@ impl TxInfo {
         }
     }
 }
-
-impl TryFrom<Row> for TxInfo {
+impl TryFrom<Row> for TxDetails {
     type Error = Error;
-
     fn try_from(row: Row) -> Result<Self, Self::Error> {
-        info!("TxInfo::try_from");
+        info!("TxDetails::try_from");
 
-        let hash: Vec<u8> = row.try_get("hash")?;
-        let block_id: Vec<u8> = row.try_get("block_id")?;
+        // height
+        let header_height: i32 = row.try_get("header_height")?;
+        let header_height = Height::from(header_height as u32);
+
+        // timestamp
+        let timestamp: &str = row.try_get("header_time")?;
+        let header_time = Time::parse_from_rfc3339(timestamp)?;
+
+        let tx_hash: String = row.try_get("tx_hash")?;
+        let block_hash: String = row.try_get("block_hash")?;
+        let wrapper_hash: String = row.try_get("wrapper_hash")?;
         let tx_type: String = row.try_get("tx_type")?;
-        let wrapper_id: Vec<u8> = row.try_get("wrapper_id")?;
+
         let fee_amount_per_gas_unit = row.try_get("fee_amount_per_gas_unit")?;
         let fee_token = row.try_get("fee_token")?;
         let gas_limit_multiplier = row.try_get("gas_limit_multiplier")?;
         let code_type = row.try_get("code_type")?;
         let code: Option<Vec<u8>> = row.try_get("code")?;
         let data: Option<Vec<u8>> = row.try_get("data")?;
-        let memo: Option<Vec<u8>> = row.try_get("memo")?;
-        let return_code = row.try_get("return_code")?;
+        let memo: String = row.try_get("memo")?;
+        let return_code: Option<i32> = row.try_get("return_code")?;
 
         Ok(Self {
-            hash,
-            block_id,
+            header_height,
+            header_time,
+            tx_hash,
+            block_hash,
+            wrapper_hash,
             tx_type,
-            wrapper_id,
             fee_amount_per_gas_unit,
             fee_token,
             gas_limit_multiplier,
@@ -263,43 +195,8 @@ impl TryFrom<Row> for TxInfo {
             code,
             data,
             memo,
-            return_code, // Assigning return_code to the struct field
             tx: None,
-            block: None,
-        })
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
-pub struct VoteProposalTx {
-    pub id: u64,
-    pub vote: String,
-    pub voter: String,
-    pub delegations: Vec<String>,
-    #[serde(with = "hex::serde")]
-    pub tx_id: Vec<u8>,
-}
-
-impl TryFrom<Row> for VoteProposalTx {
-    type Error = Error;
-
-    fn try_from(value: Row) -> Result<Self, Self::Error> {
-        let id = value.try_get::<[u8; std::mem::size_of::<u64>()], _>("vote_proposal_id")?;
-        let id = u64::from_be_bytes(id);
-
-        let vote = value.try_get::<String, _>("vote")?;
-        let voter = value.try_get::<String, _>("voter")?;
-        let tx_id = value.try_get::<Vec<u8>, _>("tx_id")?;
-
-        // empty this comes from another table.
-        let delegations = vec![];
-
-        Ok(Self {
-            id,
-            vote,
-            voter,
-            delegations,
-            tx_id,
+            return_code,
         })
     }
 }
