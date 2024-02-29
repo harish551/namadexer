@@ -44,7 +44,7 @@ use crate::tables::{
     get_create_block_table_query,
     get_create_commit_signatures_table_query,
     get_create_delegations_table,
-     et_create_evidences_table_query,
+    get_create_evidences_table_query,
     get_create_proposals_table,
     get_create_transactions_table_query,
     get_create_transactions_view_query,
@@ -567,7 +567,8 @@ impl Database {
         for t in txs.iter() {
             let tx = Tx::try_from(t.as_slice()).map_err(|e| Error::InvalidTxData(e.to_string()))?;
 
-            let mut code = Default::default();
+            let mut code: [u8; 32] = Default::default();
+            let mut code_type: String = "wrapper".to_string();
             let mut txid_wrapper: Vec<u8> = vec![];
 
             let mut hash_id = tx.header_hash().to_vec();
@@ -602,7 +603,7 @@ impl Database {
                 }
 
                 // look for wrapper tx to link to
-                let txs = query(
+                let txs:Vec<Row> = query(
                     &format!(
                         "SELECT * FROM {0}.transactions WHERE block_id IN (SELECT block_id FROM {0}.blocks WHERE header_height = {1});",
                         network,
@@ -621,6 +622,7 @@ impl Database {
                 let code_hex = hex::encode(code.as_slice());
                 let unknown_type = "unknown".to_string();
                 let type_tx = checksums_map.get(&code_hex).unwrap_or(&unknown_type);
+                code_type = type_tx.to_string();
 
                 debug!("Saving {} transaction", type_tx);
 
@@ -747,6 +749,49 @@ impl Database {
                         //         .build();
                         //     query.execute(&mut *sqlx_tx).await?;
                         // }
+                        "tx_init_proposal" => {
+                            let mut query_builder: QueryBuilder<_> = QueryBuilder::new(format!(
+                                "INSERT INTO {}.tx_init_proposal(
+                                    tx_id,
+                                    custom_id,
+                                    type,
+                                    author,
+                                    voting_start_epoch,
+                                    voting_end_epoch,
+                                    grace_epoch
+                                )",
+                                network
+                            ));
+
+                            let tx_data = InitProposalData::try_from_slice(&data[..])?;
+
+                            let query = query_builder
+                                .push_values(std::iter::once(0), |mut b, _| {
+                                    b.push_bind(&hash_id)
+                                        .push_bind(tx_data.id as i32)
+                                        .push_bind(tx_data.r#type.to_string())
+                                        .push_bind(tx_data.author.to_string())
+                                        .push_bind(
+                                            tx_data
+                                                .voting_start_epoch
+                                                .to_string()
+                                                .parse::<i32>()
+                                                .unwrap(),
+                                        )
+                                        .push_bind(
+                                            tx_data
+                                                .voting_end_epoch
+                                                .to_string()
+                                                .parse::<i32>()
+                                                .unwrap(),
+                                        )
+                                        .push_bind(
+                                            tx_data.grace_epoch.to_string().parse::<i32>().unwrap(),
+                                        );
+                                })
+                                .build();
+                            query.execute(&mut *sqlx_tx).await?;
+                        }
                         "tx_vote_proposal" => {
                             let mut query_builder: QueryBuilder<_> = QueryBuilder::new(format!(
                                 "INSERT INTO {}.vote_proposal(
@@ -889,8 +934,10 @@ impl Database {
                 fee_amount_per_gas_unit,
                 fee_token,
                 gas_limit_multiplier,
+                code_type,
                 code,
                 tx.data().map(|v| v.to_vec()),
+                tx.memo().map(|v| v.to_vec()),
                 return_code,
             ));
         }
@@ -914,8 +961,10 @@ impl Database {
                         fee_amount_per_gas_unit,
                         fee_token,
                         fee_gas_limit_multiplier,
+                        code_type,
                         code,
                         data,
+                        memo,
                         return_code,
                     )
                 | {
@@ -926,8 +975,10 @@ impl Database {
                         .push_bind(fee_amount_per_gas_unit)
                         .push_bind(fee_token)
                         .push_bind(fee_gas_limit_multiplier)
+                        .push_bind(code_type)
                         .push_bind(code)
                         .push_bind(data)
+                        .push_bind(memo)
                         .push_bind(return_code);
                 }
             )
@@ -1069,6 +1120,188 @@ impl Database {
         Ok(())
     }
 
+    #[instrument(skip(self))]
+    /// Returns Transaction identified by memo
+    pub async fn get_tx_memo(
+        &self,
+        memo: String,
+        limit: u32,
+        offset: u32,
+        exclude_wrapper: bool,
+    ) -> Result<Vec<Row>, Error> {
+        // query for transaction with memo
+        let mut query_str = format!(
+            "SELECT * FROM {}.{TX_VIEW_NAME} t WHERE t.memo=$1",
+            self.network
+        );
+
+        // Append condition to exclude 'wrapper' transactions if exclude_wrapper is true
+        if exclude_wrapper {
+            query_str.push_str(" AND t.tx_type <> 'Wrapper'");
+        }
+
+        // Complete the query with ORDER BY, LIMIT, and OFFSET
+        query_str.push_str(" ORDER BY t.header_height DESC LIMIT $2 OFFSET $3");
+
+        query(&query_str)
+            .bind(memo)
+            .bind(limit as i64)
+            .bind(offset as i64)
+            .fetch_all(&*self.pool)
+            .await
+            .map_err(Error::from)
+    }
+
+    #[instrument(skip(self))]
+    /// Returns the total number of Transactions identified by memo
+    pub async fn get_total_tx_count_by_memo(
+        &self,
+        memo: String,
+        exclude_wrapper: bool,
+    ) -> Result<Row, Error> {
+        let mut str = format!(
+            "SELECT COUNT(*) as counter FROM {}.{TX_VIEW_NAME} t WHERE t.memo=$1",
+            self.network
+        );
+
+        // Append condition to exclude 'wrapper' transactions if exclude_wrapper is true
+        if exclude_wrapper {
+            str.push_str(" AND t.tx_type <> 'Wrapper'");
+        }
+
+        query(&str)
+            .bind(memo)
+            .fetch_one(&*self.pool)
+            .await
+            .map_err(Error::from)
+    }
+
+    #[instrument(skip(self))]
+    /// Returns the latest stats
+    pub async fn get_tx_stats(&self) -> Result<Vec<Row>, Error> {
+        let str = format!("SELECT COALESCE(t.return_code, 999) as return_code, count(t.*) as tx_count FROM {0}.{TX_VIEW_NAME} t GROUP BY t.return_code", self.network);
+
+        // use query_one as the row matching max height is unique.
+        query(&str)
+            .fetch_all(&*self.pool)
+            .await
+            .map_err(Error::from)
+    }
+
+    #[instrument(skip(self))]
+    /// Return proposal by id
+    pub async fn get_proposal(&self, id: &i32) -> Result<Option<Row>, Error> {
+        let str = format!("SELECT * FROM {}.proposals WHERE id = $1", self.network);
+
+        // use query_one as the row matching max height is unique.
+        query(&str)
+            .bind(id)
+            .fetch_optional(&*self.pool)
+            .await
+            .map_err(Error::from)
+    }
+
+    #[instrument(skip(self))]
+    /// Return all proposals
+    pub async fn get_proposals(&self) -> Result<Vec<Row>, Error> {
+        let str = format!("SELECT * FROM {}.proposals ORDER by id DESC", self.network);
+
+        // use query_one as the row matching max height is unique.
+        query(&str)
+            .fetch_all(&*self.pool)
+            .await
+            .map_err(Error::from)
+    }
+
+    #[instrument(skip(self))]
+    pub async fn update_proposal_content(
+        &self,
+        id: i32,
+        content: BTreeMap<String, String>,
+    ) -> Result<(), Error> {
+        query(
+            format!(
+                "UPDATE {}.proposals SET content = $1::json WHERE id = $2",
+                self.network
+            )
+            .as_str(),
+        )
+        .bind(serde_json::to_string(&content).unwrap())
+        .bind(id)
+        .execute(&*self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    #[instrument(skip(self))]
+    pub async fn save_proposal(&self, proposal: StorageProposal) -> Result<(), Error> {
+        let content: BTreeMap<String, String> = proposal.content.clone();
+
+        // I'm using standard query instead of query builder because i have no idea how to cast content to ::json with push_values
+        query(format!("INSERT INTO {}.proposals (id, type, author, content, voting_start_epoch, voting_end_epoch, grace_epoch) VALUES ($1, $2, $3, $4::json, $5, $6, $7);", self.network).as_str(),)
+            .bind(proposal.id as i32)
+            .bind(proposal.r#type.to_string())
+            .bind(proposal.author.to_string())
+            .bind(serde_json::to_string(&content).unwrap())
+            .bind(
+                proposal
+                    .voting_start_epoch
+                    .to_string()
+                    .parse::<i32>()
+                    .unwrap(),
+            )
+            .bind(
+                proposal
+                    .voting_end_epoch
+                    .to_string()
+                    .parse::<i32>()
+                    .unwrap(),
+            )
+            .bind(proposal.grace_epoch.to_string().parse::<i32>().unwrap())
+            .execute(&*self.pool).await?;
+
+        Ok(())
+    }
+
+    #[instrument(skip(self))]
+    /// Returns the latest height value, otherwise returns an Error.
+    pub async fn get_proposal_counter(&self) -> Result<Row, Error> {
+        let str = format!(
+            "SELECT COUNT(id) AS counter FROM {}.proposals",
+            self.network
+        );
+
+        query(&str)
+            .fetch_one(&*self.pool)
+            .await
+            .map_err(Error::from)
+    }
+
+    pub async fn get_missing_votes(&self, address: String, epoch: i32) -> Result<Vec<Row>, Error> {
+        let q = format!(
+            "SELECT p.id from {0}.proposals p where id not in (SELECT DISTINCT
+                (get_byte(v.vote_proposal_id, 0)::bigint << 56) |
+                (get_byte(v.vote_proposal_id, 1)::bigint << 48) |
+                (get_byte(v.vote_proposal_id, 2)::bigint << 40) |
+                (get_byte(v.vote_proposal_id, 3)::bigint << 32) |
+                (get_byte(v.vote_proposal_id, 4)::bigint << 24) |
+                (get_byte(v.vote_proposal_id, 5)::bigint << 16) |
+                (get_byte(v.vote_proposal_id, 6)::bigint << 8)  |
+                get_byte(v.vote_proposal_id, 7)::bigint AS vote_proposal_id_as_bigint
+            FROM {0}.vote_proposal v
+            WHERE v.voter = $1) and p.voting_end_epoch >$2 and p.voting_start_epoch <= $2",
+            self.network
+        );
+
+        query(&q)
+            .bind(address)
+            .bind(epoch)
+            .fetch_all(&*self.pool)
+            .await
+            .map_err(Error::from)
+    }
+    
     #[instrument(skip(self, block_id))]
     pub async fn block_by_id(&self, block_id: &[u8]) -> Result<Option<Row>, Error> {
         // query for the block if it exists

@@ -58,7 +58,6 @@ pub enum TxDecoded {
     UpdateStewardCommission(UpdateStewardCommission),
     EthPoolBridge(PendingTransfer),
     Ibc(IbcTx),
-    InitProposal(InitProposalData),
     BecomeValidator(Box<BecomeValidator>),
     ConsensusKeyChange(ConsensusKeyChange),
     CommissionChange(CommissionChange),

@@ -30,10 +30,10 @@ pub(crate) use utils::{from_hex, serialize_hex};
 use self::endpoints::{
     account::get_account_updates,
     block::{get_block_by_hash, get_block_by_height, get_last_block, get_blocks},
-    transaction::{get_shielded_tx, get_tx_by_hash, get_vote_proposal, get_txs},
+    transaction::{get_shielded_tx, get_tx_by_hash, get_vote_proposal, get_tx_by_memo, get_txs},
     proposal::{get_missing_votes, get_proposal, get_proposals},
     stats::get_stats,
-    validator::{get_validator_uptime,get_commit_signature}
+    validator::{get_validator_uptime, get_commit_signature}
 };
 
 pub const HTTP_DURATION_SECONDS_BUCKETS: &[f64; 11] = &[
