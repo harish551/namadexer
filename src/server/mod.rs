@@ -69,7 +69,7 @@ fn server_routes(state: ServerState) -> Router<()> {
         .route("/stats", get(get_stats))
         .route("/proposals", get(get_proposals))
         .route("/proposal/:id", get(get_proposal))
-        .route("/missing_votes/:address/:epoch", get(get_missing_votes)
+        .route("/missing_votes/:address/:epoch", get(get_missing_votes))
         .with_state(state)
 }
 
